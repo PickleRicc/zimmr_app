@@ -1,0 +1,30 @@
+{
+  "name": "extern-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.50.2",
+    "axios": "^1.8.4",
+    "date-fns": "^4.1.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^3.0.1",
+    "next": "15.2.4",
+    "react": "18.2.0",
+    "react-big-calendar": "^1.18.0",
+    "react-dom": "18.2.0",
+    "react-feather": "^2.0.10"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.17",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4"
+  }
+}

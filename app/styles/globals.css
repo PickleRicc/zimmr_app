@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 18, 18, 18;
+  --primary-rgb: 255, 203, 0;
+  --success-rgb: 74, 222, 128;
+  --error-rgb: 239, 68, 68;
+  --warning-rgb: 245, 158, 11;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-rgb: 18, 18, 18;
+    --primary-rgb: 255, 203, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+  font-family: 'Archivo Black', -apple-system, BlinkMacSystemFont, sans-serif;
+}
