@@ -81,17 +81,73 @@ export async function POST(req) {
 
     const body = await req.json();
     const craftsmanId = await getOrCreateCraftsmanId(user);
+    const materials = body.materials || [];
+    
+    // Calculate total materials price
+    let totalMaterialsPrice = 0;
+    materials.forEach(material => {
+      totalMaterialsPrice += (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+    });
+    
+    // Remove materials from invoice body
+    const { materials: materialsList, ...invoiceData } = body;
+    
+    // Prepare data for insertion
+    const insertBody = camelToSnake({ 
+      ...invoiceData, 
+      craftsman_id: craftsmanId,
+      total_materials_price: totalMaterialsPrice.toFixed(2),
+      // Ensure numeric values are properly formatted
+      amount: parseFloat(body.amount || 0).toFixed(2),
+      tax_amount: parseFloat(body.tax_amount || 0).toFixed(2),
+      total_amount: parseFloat(body.total_amount || 0).toFixed(2)
+    });
 
-    // attach craftsman and convert casing
-    const insertBody = camelToSnake({ ...body, craftsman_id: craftsmanId });
-
-    const { data, error } = await supabase
+    const { data: invoice, error } = await supabase
       .from('invoices')
       .insert(insertBody)
       .select()
       .single();
+      
     if (error) throw error;
-    return Response.json(data, { status: 201 });
+    
+    // Insert materials if any
+    if (materials.length > 0) {
+      console.log(`Inserting ${materials.length} materials for invoice ID ${invoice.id}`);
+      
+      // Insert materials for this invoice
+      for (const material of materials) {
+        // Exclude any ID fields sent from the client
+        const { id, ...materialWithoutId } = material;
+        
+        // Prepare insert data
+        const materialInsert = {
+          invoice_id: invoice.id,
+          material_id: material.material_id,
+          quantity: parseFloat(material.quantity) || 1,
+          unit_price: parseFloat(material.unit_price) || 0,
+          name: material.name || 'Unnamed Material', // Required field
+          unit: material.unit || 'Stück' // Required field with default value
+        };
+        
+        console.log('Inserting material:', materialInsert);
+        
+        const { error: materialError } = await supabase
+          .from('invoice_materials')
+          .insert([materialInsert]);
+        
+        if (materialError) {
+          console.error('Error inserting material:', materialError);
+          throw materialError;
+        }
+      }
+    }
+    
+    // Return the created invoice
+    return Response.json({ 
+      message: 'Invoice created successfully',
+      invoice: invoice 
+    }, { status: 201 });
   } catch (err) {
     console.error('/api/invoices POST error', err.message);
     return new Response(err.message || 'Server error', { status: 500 });

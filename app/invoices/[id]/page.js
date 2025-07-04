@@ -4,11 +4,17 @@ import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { invoicesAPI, customersAPI, appointmentsAPI } from '../../lib/api';
+import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
+import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 
 export default function InvoiceDetailPage({ params }) {
   const invoiceId = use(params).id;
+  
+  // Use the authentication hook
+  const { user, loading: authLoading } = useRequireAuth();
+  const authedFetch = useAuthedFetch();
   
   const [invoice, setInvoice] = useState(null);
   const [customers, setCustomers] = useState([]);
@@ -17,11 +23,9 @@ export default function InvoiceDetailPage({ params }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [craftsmanId, setCraftsmanId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [formData, setFormData] = useState({
-    craftsman_id: '',
     customer_id: '',
     amount: '',
     tax_amount: '',
@@ -33,62 +37,34 @@ export default function InvoiceDetailPage({ params }) {
     location: '',
     vat_exempt: false,
     type: 'invoice',
-    appointment_id: ''
+    appointment_id: '',
+    materials: [],
+    total_materials_price: '0.00'
   });
   
   const router = useRouter();
 
+  // Fetch invoice data when user is authenticated
   useEffect(() => {
-    // Get craftsman ID from token
-    const token = localStorage.getItem('token');
-    if (token) {
-      try {
-        const tokenData = JSON.parse(atob(token.split('.')[1]));
-        
-        // Check for craftsmanId in different possible formats
-        let extractedCraftsmanId = null;
-        if (tokenData.craftsmanId) {
-          extractedCraftsmanId = tokenData.craftsmanId;
-        } else if (tokenData.craftsman_id) {
-          extractedCraftsmanId = tokenData.craftsman_id;
-        } else if (tokenData.user && tokenData.user.craftsmanId) {
-          extractedCraftsmanId = tokenData.user.craftsmanId;
-        } else if (tokenData.user && tokenData.user.craftsman_id) {
-          extractedCraftsmanId = tokenData.user.craftsman_id;
-        }
-        
-        if (extractedCraftsmanId) {
-          setCraftsmanId(extractedCraftsmanId);
-          setFormData(prev => ({ ...prev, craftsman_id: extractedCraftsmanId }));
-        } else {
-          setError('Keine Handwerker-ID in Ihrem Konto gefunden. Bitte wenden Sie sich an den Support.');
-        }
-      } catch (err) {
-        console.error('Error parsing token:', err);
-        setError('Fehler bei der Authentifizierung Ihres Kontos. Bitte versuchen Sie es erneut.');
-      }
-    } else {
-      setError('Sie sind nicht angemeldet. Bitte melden Sie sich an, um Rechnungsdetails anzuzeigen.');
-    }
-  }, []);
-
-  useEffect(() => {
-    if (craftsmanId && invoiceId) {
+    if (!authLoading && user && invoiceId) {
       fetchInvoice();
       fetchCustomers();
     }
-  }, [craftsmanId, invoiceId]);
+  }, [user, authLoading, invoiceId]);
 
   const fetchInvoice = async () => {
     try {
       setLoading(true);
-      const data = await invoicesAPI.getById(invoiceId, craftsmanId);
+      const response = await authedFetch(`/api/invoices/${invoiceId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch invoice: ${response.statusText}`);
+      }
+      const data = await response.json();
       console.log('Fetched invoice:', data);
       setInvoice(data);
       
       // Initialize form data with invoice data
       setFormData({
-        craftsman_id: data.craftsman_id,
         customer_id: data.customer_id,
         amount: data.amount,
         tax_amount: data.tax_amount || 0,
@@ -100,7 +76,9 @@ export default function InvoiceDetailPage({ params }) {
         location: data.location || '',
         vat_exempt: data.vat_exempt || false,
         type: data.type || 'invoice',
-        appointment_id: data.appointment_id || ''
+        appointment_id: data.appointment_id || '',
+        materials: data.materials || [],
+        total_materials_price: data.total_materials_price || '0.00'
       });
       
       // If there's an appointment_id, fetch the appointment details
@@ -119,8 +97,11 @@ export default function InvoiceDetailPage({ params }) {
 
   const fetchAppointment = async (appointmentId) => {
     try {
-      const data = await appointmentsAPI.getById(appointmentId);
-      console.log('Fetched appointment:', data);
+      const response = await authedFetch(`/api/appointments/${appointmentId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch appointment: ${response.statusText}`);
+      }
+      const data = await response.json();
       setAppointment(data);
     } catch (err) {
       console.error('Error fetching appointment:', err);
@@ -130,8 +111,11 @@ export default function InvoiceDetailPage({ params }) {
 
   const fetchCustomers = async () => {
     try {
-      const data = await customersAPI.getAll({ craftsman_id: craftsmanId });
-      console.log('Fetched customers:', data);
+      const response = await authedFetch('/api/customers');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch customers: ${response.statusText}`);
+      }
+      const data = await response.json();
       setCustomers(data);
     } catch (err) {
       console.error('Error fetching customers:', err);
@@ -184,7 +168,19 @@ export default function InvoiceDetailPage({ params }) {
       
       console.log('Submitting invoice update:', invoiceData);
       
-      const result = await invoicesAPI.update(invoiceId, invoiceData);
+      const response = await authedFetch(`/api/invoices/${invoiceId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoiceData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to update invoice: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
       console.log('Invoice updated:', result);
       
       setInvoice(result);
@@ -208,20 +204,26 @@ export default function InvoiceDetailPage({ params }) {
     try {
       setPdfLoading(true);
       
-      // Get craftsman data from localStorage if available
+      if (!invoice) {
+        throw new Error('PDF kann nicht generiert werden. Rechnungs-/Angebotsdaten fehlen.');
+      }
+      
+      // Import the PDF generator utility
+      const pdfGenerator = await import('../../lib/utils/pdfGenerator').then(module => module.default);
+      
+      // Get user profile data from the authenticated user object instead of localStorage
       const craftsmanData = {
-        name: localStorage.getItem('userName') || 'ZIMMR Craftsman',
-        email: localStorage.getItem('userEmail') || '',
-        phone: '',
-        address: '',
-        // Add any other data from profile if available
-        tax_id: localStorage.getItem('userTaxId') || '',
-        iban: localStorage.getItem('userIban') || '',
-        bic: localStorage.getItem('userBic') || ''
+        name: user?.user_metadata?.full_name || 'ZIMMR Craftsman',
+        email: user?.email || '',
+        phone: user?.user_metadata?.phone || '',
+        address: user?.user_metadata?.address || '',
+        tax_id: user?.user_metadata?.tax_id || '',
+        iban: user?.user_metadata?.iban || '',
+        bic: user?.user_metadata?.bic || ''
       };
       
-      // Use our new German invoice PDF generator through the API
-      await invoicesAPI.generatePdf(invoice, craftsmanData);
+      // Use the German invoice PDF generator directly (client-side)
+      await pdfGenerator.generateGermanInvoicePdf(invoice, craftsmanData);
       
       console.log('German-style invoice PDF generated successfully');
       

@@ -8,6 +8,7 @@ import { invoicesAPI, quotesAPI } from '../../lib/api';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
+import MaterialSelector from '../../components/MaterialSelector';
 
 function InvoicePageContent() {
   // This component uses useSearchParams which requires Suspense
@@ -26,7 +27,9 @@ function InvoicePageContent() {
     location: '',
     vat_exempt: false,
     type: 'invoice',
-    appointment_id: ''
+    appointment_id: '',
+    materials: [], // Array to store selected materials
+    total_materials_price: '0.00' // Total price of materials
   });
 
   const [customers, setCustomers] = useState([]);
@@ -170,66 +173,90 @@ function InvoicePageContent() {
     }
   };
 
- const handleChange = (e) => {
+  // Handle regular form input changes
+  const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-
+    const newValue = type === 'checkbox' ? checked : value;
+    
     setFormData(prev => {
-        const newData = { ...prev };
-
-        // Handle checkbox inputs
-        if (type === 'checkbox') {
-            newData[name] = checked;
-
-            // If VAT exempt is toggled, recalculate tax and total
-            const amount = parseFloat(newData.amount) || 0;
-            if (name === 'vat_exempt') {
-                if (checked) {
-                    newData.tax_amount = '0.00'; // Set tax to zero
-                    newData.total_amount = amount.toFixed(2); // Total is just the amount
-                } else {
-                    // If VAT exempt is unchecked, recalculate tax at 19%
-                    const taxAmount = amount * 0.19;
-                    newData.tax_amount = taxAmount.toFixed(2);
-                    newData.total_amount = (amount + taxAmount).toFixed(2);
-                }
-            }
-        } else {
-            newData[name] = value;
-        }
-
-        // Auto-calculate tax and total amount when amount changes
-        if (name === 'amount') {
-            const amount = parseFloat(value) || 0;
-
-            if (!newData.vat_exempt) {
-                // Calculate 19% tax
-                const taxAmount = amount * 0.19;
-                newData.tax_amount = taxAmount.toFixed(2);
-                newData.total_amount = (amount + taxAmount).toFixed(2);
-            } else {
-                // No tax for VAT exempt
-                newData.tax_amount = '0.00';
-                newData.total_amount = amount.toFixed(2);
-            }
-        }
-        // If tax_amount is manually changed (and not VAT exempt), recalculate total
-        else if (name === 'tax_amount' && !newData.vat_exempt) {
-            const amount = parseFloat(newData.amount) || 0;
-            const taxAmount = parseFloat(value) || 0;
-            newData.total_amount = (amount + taxAmount).toFixed(2);
-        }
-
-        // If customer changes, potentially clear appointment selection or update available appointments
-        if (name === 'customer_id') {
-            // Optional: Clear appointment selection if customer changes
-            // newData.appointment_id = '';
-            // setSelectedAppointment(null);
-            // Or refetch/filter appointments for the new customer if needed
-        }
-
-        return newData;
+      const updatedData = { ...prev, [name]: newValue };
+      
+      // Special handling for VAT exempt and amount changes
+      if (name === 'vat_exempt' || name === 'amount') {
+        return handleVatChange(updatedData);
+      }
+      
+      // If customer changes, potentially clear appointment selection or update available appointments
+      if (name === 'customer_id') {
+        // Optional: Clear appointment selection if customer changes
+        // updatedData.appointment_id = '';
+        // setSelectedAppointment(null);
+        // Or refetch/filter appointments for the new customer if needed
+      }
+      
+      return updatedData;
     });
-};
+  };
+
+  // Handle VAT calculations when amount or vat_exempt changes
+  const handleVatChange = (data) => {
+    const amount = parseFloat(data.amount) || 0;
+    const materialTotal = parseFloat(data.total_materials_price) || 0;
+    const subtotal = amount + materialTotal;
+    
+    if (data.vat_exempt) {
+      data.tax_amount = '0.00';
+      data.total_amount = subtotal.toFixed(2);
+    } else {
+      const taxAmount = subtotal * 0.19; // 19% VAT
+      data.tax_amount = taxAmount.toFixed(2);
+      data.total_amount = (subtotal + taxAmount).toFixed(2);
+    }
+    
+    return data;
+  };
+
+  // Calculate total price of materials
+  const calculateMaterialsTotal = (materials = []) => {
+    console.log('====== CALCULATING MATERIALS TOTAL ======');
+    console.log('Materials array received:', materials);
+    console.log('Materials count:', materials.length);
+    
+    const total = materials.reduce((sum, material) => {
+      const quantity = parseFloat(material.quantity) || 0;
+      const unitPrice = parseFloat(material.unit_price) || 0;
+      const itemTotal = quantity * unitPrice;
+      console.log(`Material: ${material.name} - Quantity: ${quantity}, Unit Price: ${unitPrice}, Item Total: ${itemTotal}`);
+      return sum + itemTotal;
+    }, 0).toFixed(2);
+    
+    console.log('Calculated materials total:', total);
+    console.log('======================================');
+    return total;
+  };
+  
+  // Handle materials selection changes
+  const handleMaterialsChange = (materials) => {
+    console.log('====== MATERIALS SELECTION CHANGED ======');
+    console.log('New materials selected:', materials);
+    
+    const total_materials_price = calculateMaterialsTotal(materials);
+    
+    console.log('Setting total_materials_price:', total_materials_price);
+    
+    setFormData(prev => {
+      const updatedData = {
+        ...prev,
+        materials,
+        total_materials_price
+      };
+      
+      console.log('Updated form data with materials:', updatedData);
+      
+      // Recalculate total with materials
+      return handleVatChange(updatedData);
+    });
+  };
 
 
   const handleAppointmentChange = (e) => {
@@ -365,8 +392,16 @@ function InvoicePageContent() {
     }
   };
 
- const handleGeneratePdf = async () => {
-    if (!createdInvoice || !createdInvoice.id) {
+  const handleGeneratePdf = async () => {
+    console.log('PDF Generation triggered');
+    console.log('createdInvoice:', createdInvoice);
+    
+    // Extract the actual invoice data from the response structure
+    const invoiceData = createdInvoice?.invoice || createdInvoice;
+    console.log('Extracted invoice data:', invoiceData);
+    
+    if (!invoiceData || !invoiceData.id) {
+        console.error('Missing invoice data for PDF generation:', { createdInvoice, invoiceData });
         alert('PDF kann nicht generiert werden. Rechnungs-/Angebotsdaten fehlen.');
         return;
     }
@@ -375,55 +410,116 @@ function InvoicePageContent() {
         setPdfLoading(true);
         setError(null); // Clear previous errors
 
-        // Find the selected customer's details (use createdInvoice.customer_id)
-        const selectedCustomer = customers.find(c => c.id === parseInt(createdInvoice.customer_id));
-        if (!selectedCustomer) {
-             console.warn("Customer details not found for PDF generation.");
-             // Decide how to handle this - proceed with placeholders or show error?
+        // Import the PDF generator utility
+        console.log('Importing PDF generator...');
+        const pdfModule = await import('../../../lib/utils/pdfGenerator');
+        console.log('PDF module imported:', pdfModule);
+        const pdfGenerator = pdfModule.default || pdfModule;
+        console.log('PDF generator obtained:', pdfGenerator);
+        
+        if (!pdfGenerator || !pdfGenerator.generateInvoicePdf) {
+            console.error('PDF generator import failed or missing expected methods:', pdfGenerator);
+            throw new Error('PDF Generator konnte nicht geladen werden.');
         }
 
+        // Find the selected customer's details (use invoiceData.customer_id)
+        console.log('Looking for customer with ID:', invoiceData.customer_id);
+        console.log('Available customers:', customers);
+        const selectedCustomer = customers.find(c => c.id === parseInt(invoiceData.customer_id));
+        console.log('Selected customer:', selectedCustomer);
+        
+        if (!selectedCustomer) {
+             console.warn("Customer details not found for PDF generation.");
+        }
 
         // Use the actual created invoice/quote data returned from the API
         const documentDataForPdf = {
-            ...createdInvoice, // Base data from the API response
-            // Add/override details needed specifically for the PDF that might not be in createdInvoice
+            ...invoiceData, // Base data from the API response
+            // Add/override details needed specifically for the PDF that might not be in invoiceData
             customer_name: selectedCustomer?.name || 'N/A',
             customer_email: selectedCustomer?.email || '',
             customer_phone: selectedCustomer?.phone || '',
             customer_address: selectedCustomer?.address || '',
             // Ensure amounts are formatted as needed by PDF generator
-            amount: parseFloat(createdInvoice.amount || 0).toFixed(2),
-            tax_amount: parseFloat(createdInvoice.tax_amount || 0).toFixed(2),
-            total_amount: parseFloat(createdInvoice.total_amount || 0).toFixed(2),
+            amount: parseFloat(invoiceData.amount || 0).toFixed(2),
+            tax_amount: parseFloat(invoiceData.tax_amount || 0).toFixed(2),
+            total_amount: parseFloat(invoiceData.total_amount || 0).toFixed(2),
             // Use created_at from the API response, format if needed
-            created_at_formatted: createdInvoice.created_at ? new Date(createdInvoice.created_at).toLocaleDateString() : 'N/A',
-            due_date_formatted: createdInvoice.due_date ? new Date(createdInvoice.due_date).toLocaleDateString() : 'N/A',
-            service_date_formatted: createdInvoice.service_date ? new Date(createdInvoice.service_date).toLocaleDateString() : 'N/A',
-
+            created_at_formatted: invoiceData.created_at ? new Date(invoiceData.created_at).toLocaleDateString() : 'N/A',
+            due_date_formatted: invoiceData.due_date ? new Date(invoiceData.due_date).toLocaleDateString() : 'N/A',
+            service_date_formatted: invoiceData.service_date ? new Date(invoiceData.service_date).toLocaleDateString() : 'N/A',
+            // Line items - if not present, create a placeholder
+            line_items: invoiceData.line_items || [{
+                description: invoiceData.notes || 'Dienstleistungen',
+                quantity: 1,
+                unit: 'Pauschal',
+                price: invoiceData.amount || 0
+            }],
+            // Use materials from formData since the database/API isn't returning it properly
+            materials: Array.isArray(formData.materials) ? formData.materials : [],
+            // Make sure we're also passing the materials price
+            total_materials_price: formData.total_materials_price || invoiceData.total_materials_price || 0
         };
 
-        // Get craftsman data from localStorage if available (or fetch from backend if more reliable)
+        // Get user profile data from the authenticated user object instead of localStorage
         const craftsmanData = {
-            name: localStorage.getItem('userName') || 'ZIMMR Craftsman',
-            email: localStorage.getItem('userEmail') || '',
-            phone: localStorage.getItem('userPhone') || '',
-            address: localStorage.getItem('userAddress') || '',
+            name: user?.user_metadata?.full_name || 'ZIMMR Craftsman',
+            email: user?.email || '',
+            phone: user?.user_metadata?.phone || '',
+            address: user?.user_metadata?.address || '',
             // Add tax and banking information for German invoices
-            tax_id: localStorage.getItem('userTaxId') || '',
-            iban: localStorage.getItem('userIban') || '',
-            bic: localStorage.getItem('userBic') || '',
-            bank_name: localStorage.getItem('userBank') || '',
-            owner_name: localStorage.getItem('userName') || '' // Often same as name
+            tax_id: user?.user_metadata?.tax_id || '',
+            iban: user?.user_metadata?.iban || '',
+            bic: user?.user_metadata?.bic || '',
+            bank_name: user?.user_metadata?.bank_name || '',
+            owner_name: user?.user_metadata?.full_name || '' // Often same as name
         };
 
-        console.log("Generating PDF for:", documentDataForPdf);
+        console.log("Full document data for PDF:", documentDataForPdf);
         console.log("Using Craftsman data:", craftsmanData);
 
-
-        // Generate German-style PDF using the API method
-        // Make sure the API method can handle both invoices and quotes if needed
-        await invoicesAPI.generatePdf(documentDataForPdf, craftsmanData); // Assuming this downloads the PDF or opens it
-        console.log(`German-style ${createdInvoice.type || 'document'} PDF generated successfully`);
+        // Use the appropriate PDF generator function based on document type
+        console.log("Document type:", documentDataForPdf.type);
+        
+        // DEBUGGING: Log all available data sources
+        console.log('========= MATERIALS DATA DEBUG =========');
+        console.log('FormData direct access:', formData);
+        console.log('FormData.materials:', formData.materials);
+        console.log('InvoiceData.materials:', invoiceData.materials);
+        console.log('DocumentDataForPdf.materials:', documentDataForPdf.materials);
+        
+        // CRITICAL FIX: Manually synthesize materials data if needed
+        if (!documentDataForPdf.materials || !Array.isArray(documentDataForPdf.materials) || documentDataForPdf.materials.length === 0) {
+            if (formData.materials && Array.isArray(formData.materials) && formData.materials.length > 0) {
+                console.log('Using materials from formData');
+                documentDataForPdf.materials = formData.materials;
+            } else if (formData.total_materials_price && parseFloat(formData.total_materials_price) > 0) {
+                // If we only have the price but not the items, create a placeholder material
+                console.log('Creating placeholder material from total_materials_price');
+                documentDataForPdf.materials = [{
+                    name: 'Materialien',
+                    quantity: 1,
+                    unit: 'Pauschal',
+                    unit_price: formData.total_materials_price
+                }];
+            }
+        }
+        
+        console.log('Final materials array:', JSON.stringify(documentDataForPdf.materials, null, 2));
+        console.log('Final materials count:', Array.isArray(documentDataForPdf.materials) ? documentDataForPdf.materials.length : 0);
+        console.log('Total materials price:', documentDataForPdf.total_materials_price);
+        console.log('========= END MATERIALS DEBUG =========');
+        
+        if (documentDataForPdf.type === 'quote') {
+            console.log('Generating quote PDF...');
+            await pdfGenerator.generateQuotePdf(documentDataForPdf, craftsmanData);
+        } else {
+            // Default to invoice PDF generator
+            console.log('Generating invoice PDF...');
+            await pdfGenerator.generateInvoicePdf(documentDataForPdf, craftsmanData);
+        }
+        
+        console.log(`German-style ${invoiceData.type || 'document'} PDF generated successfully`);
 
     } catch (err) {
         console.error('Error generating German PDF:', err);
@@ -778,6 +874,23 @@ function InvoicePageContent() {
                     <p className="text-xs text-gray-400 mt-1">
                       Automatisch berechnet (Betrag + Steuer).
                     </p>
+                  </div>
+
+                  {/* Materials Section */}
+                  <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-white/10">
+                    <h3 className="text-lg font-semibold mb-3 text-gray-300">Materialien und Dienstleistungen</h3>
+                    <MaterialSelector
+                      selectedMaterials={formData.materials}
+                      onChange={handleMaterialsChange}
+                    />
+                    {/* Show materials price in the UI */}
+                    {parseFloat(formData.total_materials_price) > 0 && (
+                      <div className="mt-2 text-right">
+                        <span className="text-sm font-medium text-gray-300">
+                          Materialkosten: €{parseFloat(formData.total_materials_price).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Notes */}
