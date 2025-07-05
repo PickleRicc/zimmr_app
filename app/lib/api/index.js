@@ -80,3 +80,25 @@ export const quotesAPI = {
 // Empty exports kept for type safety / future implementation
 export const craftsmenAPI = {};
 export const financesAPI = {};
+export const spacesAPI = {
+  async getAll(params = {}) {
+    const res = await authedFetch(`/api/spaces${toQuery(params)}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  async create(payload = {}) {
+    const res = await authedFetch('/api/spaces', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  async get(id) {
+    const res = await authedFetch(`/api/spaces/${id}`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  getById: (...args) => spacesAPI.get(...args)
+};
