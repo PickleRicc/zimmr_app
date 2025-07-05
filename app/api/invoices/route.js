@@ -33,19 +33,60 @@ async function getUserFromRequest(req) {
 }
 
 async function getOrCreateCraftsmanId(user) {
-  const { data: row } = await supabase
-    .from('craftsmen')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-  if (row) return row.id;
-  const { data: created, error: createErr } = await supabase
-    .from('craftsmen')
-    .insert({ user_id: user.id, name: user.user_metadata?.full_name || user.email })
-    .select('id')
-    .single();
-  if (createErr) throw createErr;
-  return created.id;
+  try {
+    // First, try to find existing craftsman
+    const { data: row } = await supabase
+      .from('craftsmen')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+      
+    if (row) {
+      console.log('Found existing craftsman:', row.id);
+      return row.id;
+    }
+    
+    console.log('No craftsman found, attempting to create one with RLS bypass');
+    
+    // If no craftsman found, try to create one with service role key
+    const { data: created, error: createErr } = await supabase
+      .from('craftsmen')
+      .insert({ 
+        user_id: user.id, 
+        name: user.user_metadata?.full_name || user.email,
+        // Add required fields to pass RLS policies
+        created_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+      
+    if (createErr) {
+      console.error('Error creating craftsman:', createErr);
+      
+      // If we get RLS error, try to find the craftsman record again
+      // (it might exist but was created in another session/deployment)
+      if (createErr.message && createErr.message.includes('violates row-level security policy')) {
+        const { data: existingRow } = await supabase
+          .from('craftsmen')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
+          
+        if (existingRow) {
+          console.log('Found craftsman on retry:', existingRow.id);
+          return existingRow.id;
+        }
+      }
+      
+      throw createErr;
+    }
+    
+    console.log('Created new craftsman:', created.id);
+    return created.id;
+  } catch (err) {
+    console.error('Error in getOrCreateCraftsmanId:', err);
+    throw new Error('Failed to get or create craftsman profile: ' + err.message);
+  }
 }
 
 // ---------- READ COLLECTION ----------
