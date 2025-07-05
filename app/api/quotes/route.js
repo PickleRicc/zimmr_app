@@ -53,30 +53,75 @@ async function getOrCreateCraftsmanId(user) {
 export async function GET(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const craftsmanId = await getOrCreateCraftsmanId(user);
-    const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status');
-    const includeMaterials = searchParams.get('materials') === 'true';
+    const { data: craftsman, error: craftsmanError } = await supabase
+      .from('craftsmen')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
 
-    let query = supabase.from('quotes').select('*').eq('craftsman_id', craftsmanId).order('created_at', {
-      ascending: false
-    });
-    if (status) query = query.eq('status', status);
+    if (craftsmanError) {
+      console.error('Error fetching craftsman:', craftsmanError);
+      return NextResponse.json(
+        { error: 'Failed to retrieve craftsman profile' },
+        { status: 500 }
+      );
+    }
 
-    const { data: quotes, error } = await query;
-    if (error) throw error;
-    
+    if (!craftsman) {
+      return NextResponse.json(
+        { error: 'Craftsman profile not found for this user' },
+        { status: 404 }
+      );
+    }
+
+    // Parse query params
+    const url = new URL(req.url);
+    const status = url.searchParams.get('status');
+    const customerId = url.searchParams.get('customerId');
+
+    // Build query
+    let query = supabase
+      .from('quotes')
+      .select(
+        '*'
+      )
+      .eq('craftsman_id', craftsman.id)
+      .order('created_at', { ascending: false });
+
+    // Add status filter if provided
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    // Add customer filter if provided
+    if (customerId) {
+      query = query.eq('customer_id', customerId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error querying quotes:', error);
+      return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
+    }
+
     // Get materials for each quote if requested
-    if (includeMaterials && quotes?.length) {
-      const quoteIds = quotes.map(q => q.id);
+    const includeMaterials = url.searchParams.get('materials') === 'true';
+    if (includeMaterials && data?.length) {
+      const quoteIds = data.map(q => q.id);
       const { data: materials, error: materialsError } = await supabase
         .from('quote_materials')
         .select('*')
         .in('quote_id', quoteIds);
       
-      if (materialsError) throw materialsError;
+      if (materialsError) {
+        console.error('Error fetching materials:', materialsError);
+        return NextResponse.json({ error: 'Failed to retrieve materials' }, { status: 500 });
+      }
       
       // Group materials by quote_id
       const materialsByQuote = {};
@@ -88,15 +133,15 @@ export async function GET(req) {
       });
       
       // Attach materials to each quote
-      quotes.forEach(quote => {
+      data.forEach(quote => {
         quote.materials = materialsByQuote[quote.id] || [];
       });
     }
     
-    return Response.json(quotes ?? []);
+    return NextResponse.json(data || []);
   } catch (err) {
     console.error('/api/quotes GET error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }
 
@@ -114,7 +159,7 @@ export async function POST(req) {
     }
     
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const craftsmanId = await getOrCreateCraftsmanId(user);
@@ -122,7 +167,7 @@ export async function POST(req) {
 
     // Validate the request
     if (!craftsmanId) {
-      return new Response('Craftsman ID is required', { status: 400 });
+      return NextResponse.json({ error: 'Craftsman ID is required' }, { status: 400 });
     }
 
     // Parse materials for pricing calculations
@@ -186,6 +231,6 @@ export async function POST(req) {
     }, { status: 201 });
   } catch (err) {
     console.error('/api/quotes POST error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }

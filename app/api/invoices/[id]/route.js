@@ -2,6 +2,7 @@
 // Supports GET, PUT, DELETE
 
 import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || process.env.SUPABASE_URL,
@@ -47,7 +48,7 @@ const getId = (req) => req.nextUrl.pathname.split('/').pop();
 export async function GET(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const craftsmanId = await getOrCreateCraftsmanId(user);
     const id = getId(req);
     const { searchParams } = new URL(req.url);
@@ -61,8 +62,11 @@ export async function GET(req) {
       .eq('craftsman_id', craftsmanId)
       .single();
     
-    if (error && error.code !== 'PGRST116') throw error; // not found
-    if (!invoice) return Response.json(null);
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching invoice:', error);
+      return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
+    }
+    if (!invoice) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     
     // Log information about materials from JSONB
     console.log('Invoice GET - Using materials from JSONB field:', invoice.id);
@@ -73,30 +77,59 @@ export async function GET(req) {
       console.log('Found materials in JSONB field:', Array.isArray(invoice.materials) ? invoice.materials.length : 'not an array');
     }
     
-    return Response.json(invoice);
+    return NextResponse.json(invoice);
   } catch (err) {
-    console.error('/api/invoices/[id] GET error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error('Error in GET /api/invoices/[id]:', err);
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
+}
+
+async function getInvoice(id, user) {
+  const craftsmanId = await getOrCreateCraftsmanId(user);
+  const { searchParams } = new URL(req.url);
+  const includeMaterials = searchParams.get('materials') !== 'false';
+
+  // Get invoice data
+  const { data: invoice, error } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('id', id)
+    .eq('craftsman_id', craftsmanId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') throw error; // not found
+  if (!invoice) return null;
+
+  // Log information about materials from JSONB
+  console.log('Invoice GET - Using materials from JSONB field:', invoice.id);
+  if (!invoice.materials) {
+    console.log('No materials found in JSONB field, initializing empty array');
+    invoice.materials = [];
+  } else {
+    console.log('Found materials in JSONB field:', Array.isArray(invoice.materials) ? invoice.materials.length : 'not an array');
+  }
+
+  return invoice;
 }
 
 // ---------- UPDATE ----------
 export async function PUT(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const craftsmanId = await getOrCreateCraftsmanId(user);
     const id = getId(req);
     const body = await req.json();
     delete body.craftsman_id; // never allow overriding ownership
-    
+
     const materials = body.materials || [];
-    
+
     // Calculate total materials price
     let totalMaterialsPrice = 0;
     materials.forEach(material => {
       totalMaterialsPrice += (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
     });
+
     
     // Add materials and total materials price to the body for direct JSONB storage
     const updateBody = {
@@ -141,10 +174,10 @@ export async function PUT(req) {
       console.log(`Found ${Array.isArray(updatedInvoice.materials) ? updatedInvoice.materials.length : 0} materials in updated invoice JSONB`);
     }
     
-    return Response.json(updatedInvoice);
+    return NextResponse.json(updatedInvoice);
   } catch (err) {
     console.error('/api/invoices/[id] PUT error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }
 
@@ -152,7 +185,7 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const craftsmanId = await getOrCreateCraftsmanId(user);
     const id = getId(req);
 
@@ -161,10 +194,13 @@ export async function DELETE(req) {
       .delete()
       .eq('id', id)
       .eq('craftsman_id', craftsmanId);
-    if (error) throw error;
-    return new Response(null, { status: 204 });
+    if (error) {
+      console.error('Error deleting invoice:', error);
+      return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
+    }
+    return NextResponse.json({ message: 'Invoice deleted successfully' }, { status: 200 });
   } catch (err) {
     console.error('/api/invoices/[id] DELETE error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@
 // NOTE: Detail operations (GET/PUT/DELETE) live in /api/invoices/[id]/route.js
 
 import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
@@ -51,7 +52,7 @@ async function getOrCreateCraftsmanId(user) {
 export async function GET(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const craftsmanId = await getOrCreateCraftsmanId(user);
     const { searchParams } = new URL(req.url);
@@ -65,11 +66,14 @@ export async function GET(req) {
 
     if (status) query = query.eq('status', status);
     const { data, error } = await query;
-    if (error) throw error;
-    return Response.json(data ?? []);
+    if (error) {
+      console.error('Error querying invoices:', error);
+      return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
+    }
+    return NextResponse.json(data || []);
   } catch (err) {
     console.error('/api/invoices GET error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }
 
@@ -77,7 +81,7 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await req.json();
     const craftsmanId = await getOrCreateCraftsmanId(user);
@@ -118,12 +122,12 @@ export async function POST(req) {
     console.log('Successfully stored invoice with materials JSONB')
     
     // Return the created invoice
-    return Response.json({ 
+    return NextResponse.json({ 
       message: 'Invoice created successfully',
       invoice: invoice 
     }, { status: 201 });
   } catch (err) {
     console.error('/api/invoices POST error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
   }
 }
