@@ -51,14 +51,83 @@ export const appointmentsAPI = {
 };
 
 export const invoicesAPI = {
+  async getAll(params = {}) {
+    console.log('Fetching all invoices with params:', params);
+    try {
+      const res = await authedFetch(`/api/invoices${toQuery(params)}`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error fetching invoices:', errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log('Successfully fetched invoices:', data.length || 0);
+      return data;
+    } catch (error) {
+      console.error('Exception in invoicesAPI.getAll:', error);
+      throw error;
+    }
+  },
+  async get(id) {
+    console.log(`Fetching invoice ${id}`);
+    try {
+      const res = await authedFetch(`/api/invoices/${id}`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error fetching invoice ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log(`Successfully fetched invoice ${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Exception in invoicesAPI.get(${id}):`, error);
+      throw error;
+    }
+  },
+  // alias expected by some legacy pages
+  getById: (...args) => invoicesAPI.get(...args),
   async create(payload = {}) {
-    const res = await authedFetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    console.log('Creating invoice with payload:', payload);
+    try {
+      const res = await authedFetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error creating invoice:', errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log('Successfully created invoice:', data.id);
+      return data;
+    } catch (error) {
+      console.error('Exception in invoicesAPI.create:', error);
+      throw error;
+    }
+  },
+  async update(id, payload = {}) {
+    console.log(`Updating invoice ${id} with payload:`, payload);
+    try {
+      const res = await authedFetch(`/api/invoices/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error updating invoice ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log(`Successfully updated invoice ${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Exception in invoicesAPI.update(${id}):`, error);
+      throw error;
+    }
   },
   async generatePdf(invoice, craftsmanData = {}) {
     // Client-side PDF generation placeholder – keeps legacy calls working
@@ -72,13 +141,86 @@ export const invoicesAPI = {
 };
 
 export const quotesAPI = {
+  async getAll(params = {}) {
+    console.log('Fetching all quotes with params:', params);
+    try {
+      const res = await authedFetch(`/api/quotes${toQuery(params)}`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error fetching quotes:', errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log('Successfully fetched quotes:', data.length || 0);
+      return data;
+    } catch (error) {
+      console.error('Exception in quotesAPI.getAll:', error);
+      throw error;
+    }
+  },
   async get(id) {
-    const res = await authedFetch(`/api/quotes/${id}`);
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    console.log(`Fetching quote ${id}`);
+    try {
+      const res = await authedFetch(`/api/quotes/${id}`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error fetching quote ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log(`Successfully fetched quote ${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Exception in quotesAPI.get(${id}):`, error);
+      throw error;
+    }
   },
   // alias expected by some legacy pages
-  getById: (...args) => quotesAPI.get(...args)
+  getById: (...args) => quotesAPI.get(...args),
+  
+  async create(payload = {}) {
+    console.log('Creating quote with payload:', payload);
+    try {
+      const res = await authedFetch('/api/quotes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error creating quote:', errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log('Successfully created quote:', data.id);
+      return data;
+    } catch (error) {
+      console.error('Exception in quotesAPI.create:', error);
+      throw error;
+    }
+  },
+  
+  async update(id, payload = {}) {
+    console.log(`Updating quote ${id} with payload:`, payload);
+    try {
+      const res = await authedFetch(`/api/quotes/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error updating quote ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const data = await res.json();
+      console.log(`Successfully updated quote ${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Exception in quotesAPI.update(${id}):`, error);
+      throw error;
+    }
+  }
 };
 
 // Empty exports kept for type safety / future implementation
