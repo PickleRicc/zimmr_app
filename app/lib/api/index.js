@@ -5,9 +5,9 @@ import { createClient } from '@supabase/supabase-js';
 // authenticated pages already have. This lets the old API helpers work without
 // relying on `localStorage`.
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
   // Falling back to anon key is fine – we only need it to initialise the client
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
   { auth: { persistSession: true } }
 );
 

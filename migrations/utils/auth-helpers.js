@@ -45,7 +45,7 @@ export function hasAuthToken() {
   try {
     // Check localStorage for Supabase auth data
     // This is just a quick check - not a replacement for proper auth validation
-    const hasToken = localStorage.getItem('sb-' + process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/^https?:\/\//, '') + '-auth-token');
+    const hasToken = localStorage.getItem('sb-' + process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL?.replace(/^https?:\/\//, '') + '-auth-token');
     return !!hasToken;
   } catch (err) {
     // Handle case where localStorage is not available
