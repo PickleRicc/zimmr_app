@@ -64,15 +64,13 @@ export async function GET(req) {
     if (error && error.code !== 'PGRST116') throw error; // not found
     if (!invoice) return Response.json(null);
     
-    // Get materials for this invoice
-    if (includeMaterials) {
-      const { data: materials, error: materialsError } = await supabase
-        .from('invoice_materials')
-        .select('*')
-        .eq('invoice_id', id);
-      
-      if (materialsError) throw materialsError;
-      invoice.materials = materials || [];
+    // Log information about materials from JSONB
+    console.log('Invoice GET - Using materials from JSONB field:', invoice.id);
+    if (!invoice.materials) {
+      console.log('No materials found in JSONB field, initializing empty array');
+      invoice.materials = [];
+    } else {
+      console.log('Found materials in JSONB field:', Array.isArray(invoice.materials) ? invoice.materials.length : 'not an array');
     }
     
     return Response.json(invoice);
@@ -93,7 +91,6 @@ export async function PUT(req) {
     delete body.craftsman_id; // never allow overriding ownership
     
     const materials = body.materials || [];
-    delete body.materials; // Remove materials from invoice body
     
     // Calculate total materials price
     let totalMaterialsPrice = 0;
@@ -101,54 +98,32 @@ export async function PUT(req) {
       totalMaterialsPrice += (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
     });
     
-    // Add total materials price to the body
-    body.total_materials_price = totalMaterialsPrice.toFixed(2);
+    // Add materials and total materials price to the body for direct JSONB storage
+    const updateBody = {
+      ...body,
+      materials: materials, // Store materials directly as JSONB
+      total_materials_price: totalMaterialsPrice.toFixed(2)
+    };
     
-    // Update the invoice
+    console.log(`Updating invoice ${id} with ${materials.length} materials items in JSONB field`);
+    
+    // Update the invoice with materials in the JSONB field
     const { data: invoiceData, error: invoiceError } = await supabase
       .from('invoices')
-      .update(body)
+      .update(updateBody)
       .eq('id', id)
       .eq('craftsman_id', craftsmanId)
       .select()
       .single();
     
-    if (invoiceError) throw invoiceError;
-    
-    // Handle materials updates
-    if (materials && materials.length > 0) {
-      // First delete existing materials
-      const { error: deleteError } = await supabase
-        .from('invoice_materials')
-        .delete()
-        .eq('invoice_id', id);
-      
-      if (deleteError) throw deleteError;
-      
-      // Then insert new materials
-      const materialsToInsert = materials.map(material => ({
-        invoice_id: id,
-        material_id: material.material_id,
-        quantity: parseFloat(material.quantity) || 0,
-        unit_price: parseFloat(material.unit_price) || 0,
-        name: material.name || 'Unnamed Material',
-        unit: material.unit || 'Stück'
-      }));
-      
-      const { error: materialsError } = await supabase
-        .from('invoice_materials')
-        .insert(materialsToInsert);
-      
-      if (materialsError) throw materialsError;
-    } else {
-      // No materials, just delete any existing ones
-      await supabase
-        .from('invoice_materials')
-        .delete()
-        .eq('invoice_id', id);
+    if (invoiceError) {
+      console.error('Error updating invoice with materials JSONB:', invoiceError);
+      throw invoiceError;
     }
     
-    // Get the updated invoice with materials
+    console.log('Successfully updated invoice with materials in JSONB field');
+    
+    // Get the updated invoice with materials already in JSONB field
     const { data: updatedInvoice, error: finalError } = await supabase
       .from('invoices')
       .select('*')
@@ -158,14 +133,13 @@ export async function PUT(req) {
     
     if (finalError) throw finalError;
     
-    // Get materials for this invoice
-    const { data: updatedMaterials, error: materialsError } = await supabase
-      .from('invoice_materials')
-      .select('*')
-      .eq('invoice_id', id);
-    
-    if (materialsError) throw materialsError;
-    updatedInvoice.materials = updatedMaterials || [];
+    // Ensure materials field is an array
+    if (!updatedInvoice.materials) {
+      updatedInvoice.materials = [];
+      console.log('No materials in updated invoice JSONB, using empty array');
+    } else {
+      console.log(`Found ${Array.isArray(updatedInvoice.materials) ? updatedInvoice.materials.length : 0} materials in updated invoice JSONB`);
+    }
     
     return Response.json(updatedInvoice);
   } catch (err) {

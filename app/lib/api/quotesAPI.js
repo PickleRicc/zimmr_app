@@ -30,27 +30,44 @@ export const quotesAPI = {
     return res.json();
   },
 
-  async create(payload) {
+  async create(data) {
+    // CRITICAL: Ensure materials array is explicitly included
+    const quoteData = {
+      ...data,
+      // Make sure materials are properly formatted and included
+      materials: Array.isArray(data.materials) ? data.materials : [],
+      total_materials_price: parseFloat(data.total_materials_price || 0).toFixed(2),
+    };
+    
+    console.log('Creating quote with materials data:', quoteData.materials);
+    
     const res = await fetch('/api/quotes', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...defaultHeaders()
-      },
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'application/json', ...defaultHeaders() },
+      body: JSON.stringify(quoteData)
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
 
-  async update(id, payload) {
+  async update(id, data) {
+    // CRITICAL: Ensure materials array is explicitly included in updates too
+    const quoteData = {
+      ...data,
+      // Make sure materials are properly formatted and included
+      materials: Array.isArray(data.materials) ? data.materials : [],
+      total_materials_price: parseFloat(data.total_materials_price || 0).toFixed(2),
+    };
+    
+    console.log('Updating quote with materials data:', quoteData.materials);
+    
     const res = await fetch(`/api/quotes/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         ...defaultHeaders()
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(quoteData)
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -69,8 +86,23 @@ export const quotesAPI = {
   async generatePdf(quote, craftsmanData = {}) {
     // For now call client-side util until server endpoint is built
     if (typeof window !== 'undefined') {
-      const { generateInvoicePdf } = await import('../../../lib/utils/pdfGenerator');
-      await generateInvoicePdf({ ...quote, craftsmanData });
+      console.log('Generating quote PDF via quotesAPI...');
+      
+      // CRITICAL FIX: Log materials data for debugging
+      console.log('========= MATERIALS DATA DEBUG (Quote API) =========');
+      console.log('Quote.materials:', quote.materials);
+      console.log('Materials valid array?', Array.isArray(quote.materials));
+      console.log('Materials length:', Array.isArray(quote.materials) ? quote.materials.length : 0);
+      console.log('Total materials price:', quote.total_materials_price);
+      console.log('========= END MATERIALS DEBUG =========');
+      
+      // CRITICAL FIX: Use the correct PDF generator function for quotes
+      const pdfModule = await import('../../../lib/utils/pdfGenerator');
+      const pdfGenerator = pdfModule.default || pdfModule;
+      
+      // Use the correct quote PDF generator
+      await pdfGenerator.generateQuotePdf(quote, craftsmanData);
+      console.log('Quote PDF generated successfully via quotesAPI');
       return true;
     }
     throw new Error('PDF generation not available on server');

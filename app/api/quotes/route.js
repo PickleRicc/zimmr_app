@@ -138,13 +138,15 @@ export async function POST(req) {
       ...validFields 
     } = body;
     
-    // Make sure we remove the materials array from the quote insert payload
-    // It will be inserted separately in the quote_materials table
+    // Store materials directly in the JSONB field
+    console.log(`Adding ${materials.length} materials directly to quote JSONB field`);
 
     // Ensure we have proper numeric values for the database
     const insertBody = camelToSnake({
       ...validFields,
       craftsman_id: craftsmanId,
+      // Include materials directly in JSONB field
+      materials: materials,
       // Use the values from the form explicitly, with fallbacks
       amount: parseFloat(body.amount || 0).toFixed(2),
       tax_amount: parseFloat(body.tax_amount || 0).toFixed(2),
@@ -164,45 +166,19 @@ export async function POST(req) {
       total_materials_price: parseFloat(insertBody.total_materials_price || 0).toFixed(2)
     };
 
+    console.log('Inserting quote with materials in JSONB field');
     const { data: quoteData, error: quoteError } = await supabase
       .from('quotes')
       .insert([quoteInsert])
       .select('*')
       .single();
       
-    if (quoteError) throw quoteError;
-
-    // Then insert the materials if any
-    if (materials.length > 0) {
-      console.log(`Inserting ${materials.length} materials for quote ID ${quoteData.id}`);
-      
-      // Insert materials for this quote
-      for (const material of materials) {
-        // Exclude any ID fields sent from the client
-        const { id, ...materialWithoutId } = material;
-        
-        // Prepare insert data
-        const materialInsert = {
-          quote_id: quoteData.id,
-          material_id: material.material_id,
-          quantity: parseFloat(material.quantity) || 1,
-          unit_price: parseFloat(material.unit_price) || 0,
-          name: material.name || 'Unnamed Material', // Required field
-          unit: material.unit || 'Stück' // Required field with default value
-        };
-        
-        console.log('Inserting material:', materialInsert);
-        
-        const { error: materialError } = await supabase
-          .from('quote_materials')
-          .insert([materialInsert]);
-        
-        if (materialError) {
-          console.error('Error inserting material:', materialError);
-          throw materialError;
-        }
-      }
+    if (quoteError) {
+      console.error('Error inserting quote with materials:', quoteError);
+      throw quoteError;
     }
+    
+    console.log('Successfully created quote with materials in JSONB field')
     
     return NextResponse.json({ 
       message: 'Quote created successfully', 

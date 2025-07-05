@@ -64,15 +64,13 @@ export async function GET(req) {
     if (error && error.code !== 'PGRST116') throw error; // not found
     if (!quote) return Response.json(null);
     
-    // Get materials for this quote
-    if (includeMaterials) {
-      const { data: materials, error: materialsError } = await supabase
-        .from('quote_materials')
-        .select('*')
-        .eq('quote_id', id);
-      
-      if (materialsError) throw materialsError;
-      quote.materials = materials || [];
+    // Log information about materials from JSONB field
+    console.log('Quote GET - Using materials from JSONB field:', id);
+    if (!quote.materials) {
+      console.log('No materials found in JSONB field, initializing empty array');
+      quote.materials = [];
+    } else {
+      console.log('Found materials in JSONB field:', Array.isArray(quote.materials) ? quote.materials.length : 'not an array');
     }
     
     return Response.json(quote);
@@ -93,7 +91,6 @@ export async function PUT(req) {
     delete body.craftsman_id;
     
     const materials = body.materials || [];
-    delete body.materials; // Remove materials from quote body
     
     // Calculate total materials price
     let totalMaterialsPrice = 0;
@@ -101,86 +98,50 @@ export async function PUT(req) {
       totalMaterialsPrice += (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
     });
     
-    // Add total materials price to the body
-    body.total_materials_price = totalMaterialsPrice.toFixed(2);
-
-    // Start a transaction
-    const { data, error } = await supabase.rpc('update_quote_with_materials', {
-      quote_id: id,
-      quote_data: body,
-      materials_data: materials.map(m => ({
-        id: m.id, // if existing material
-        quote_id: id,
-        material_id: m.material_id,
-        quantity: parseFloat(m.quantity) || 0,
-        unit_price: parseFloat(m.unit_price) || 0,
-        name: m.name,
-        unit: m.unit
-      }))
-    });
+    // Prepare update data with materials in JSONB field
+    const updateData = {
+      ...body,
+      materials: materials,  // Store materials directly in JSONB field
+      total_materials_price: totalMaterialsPrice.toFixed(2)
+    };
     
-    // Manual transaction if RPC not available
-    if (error || !data) {
-      // Update the quote
-      const { data: quoteData, error: quoteError } = await supabase
-        .from('quotes')
-        .update(body)
-        .eq('id', id)
-        .eq('craftsman_id', craftsmanId)
-        .select()
-        .single();
-      
-      if (quoteError) throw quoteError;
-      
-      // Delete existing materials
-      const { error: deleteError } = await supabase
-        .from('quote_materials')
-        .delete()
-        .eq('quote_id', id);
-      
-      if (deleteError) throw deleteError;
-      
-      // Insert new materials
-      if (materials.length > 0) {
-        const materialsToInsert = materials.map(material => ({
-          quote_id: id,
-          material_id: material.material_id,
-          quantity: parseFloat(material.quantity) || 0,
-          unit_price: parseFloat(material.unit_price) || 0,
-          name: material.name,
-          unit: material.unit
-        }));
-        
-        const { error: materialsError } = await supabase
-          .from('quote_materials')
-          .insert(materialsToInsert);
-        
-        if (materialsError) throw materialsError;
-      }
-      
-      // Get the updated quote with materials
-      const { data: updatedQuote, error: finalError } = await supabase
-        .from('quotes')
-        .select('*')
-        .eq('id', id)
-        .eq('craftsman_id', craftsmanId)
-        .single();
-      
-      if (finalError) throw finalError;
-      
-      // Get materials for this quote
-      const { data: updatedMaterials, error: materialsError } = await supabase
-        .from('quote_materials')
-        .select('*')
-        .eq('quote_id', id);
-      
-      if (materialsError) throw materialsError;
-      updatedQuote.materials = updatedMaterials || [];
-      
-      return Response.json(updatedQuote);
+    console.log(`Updating quote ${id} with ${materials.length} materials directly in JSONB field`);
+    
+    // Update the quote with materials in JSONB
+    const { data: quoteData, error: quoteError } = await supabase
+      .from('quotes')
+      .update(updateData)
+      .eq('id', id)
+      .eq('craftsman_id', craftsmanId)
+      .select()
+      .single();
+    
+    if (quoteError) {
+      console.error('Error updating quote with materials in JSONB:', quoteError);
+      throw quoteError;
     }
     
-    return Response.json(data);
+    console.log('Successfully updated quote with materials in JSONB field');
+    
+    // Get the updated quote with materials
+    const { data: updatedQuote, error: finalError } = await supabase
+      .from('quotes')
+      .select('*')
+      .eq('id', id)
+      .eq('craftsman_id', craftsmanId)
+      .single();
+    
+    if (finalError) throw finalError;
+    
+    // Ensure materials field is an array in the updated quote
+    if (!updatedQuote.materials) {
+      updatedQuote.materials = [];
+      console.log('No materials found in updated quote JSONB, using empty array');
+    } else {
+      console.log(`Found ${Array.isArray(updatedQuote.materials) ? updatedQuote.materials.length : 0} materials in updated quote JSONB`);
+    }
+    
+    return Response.json(updatedQuote);
   } catch (err) {
     console.error('/api/quotes/[id] PUT error', err.message);
     return new Response(err.message || 'Server error', { status: 500 });

@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
-import Header from '../../../components/Header';
-import Footer from '../../../components/Footer';
-import { generateQuotePdf } from '../../../lib/utils/pdfGenerator';
-import MaterialSelector from '../../../components/MaterialSelector';
+import Header from '../../components/Header';
+import Footer from '../../components/Footer';
+// Changed from direct import to dynamic import to avoid DOM errors
+import MaterialSelector from '../../components/MaterialSelector';
 
 // Format date for input fields (YYYY-MM-DD)
 const formatDateForInput = (dateString) => {
@@ -116,14 +116,28 @@ export default function QuoteDetailPage({ params }) {
       }
       const quoteData = await response.json();
       
+      // DEBUGGING: Log materials information when quote is fetched
+      console.log('========= MATERIALS DATA DEBUG (Quote Fetch) =========');
+      console.log('Fetched quote.materials:', quoteData.materials);
+      console.log('Materials valid array?', Array.isArray(quoteData.materials));
+      console.log('Materials length:', Array.isArray(quoteData.materials) ? quoteData.materials.length : 0);
+      console.log('Total materials price:', quoteData.total_materials_price);
+      console.log('Raw quote data:', quoteData);
+      console.log('========= END MATERIALS DEBUG =========');
+      
       // Format dates for input fields
       const formattedQuote = {
         ...quoteData,
         due_date: formatDateForInput(quoteData.due_date),
         service_date: formatDateForInput(quoteData.service_date),
-        materials: quoteData.materials || [],
-        total_materials_price: calculateMaterialsTotal(quoteData.materials || [])
+        // CRITICAL: Ensure materials array is properly initialized
+        materials: Array.isArray(quoteData.materials) && quoteData.materials.length > 0 
+          ? quoteData.materials 
+          : [],
+        total_materials_price: quoteData.total_materials_price || calculateMaterialsTotal(quoteData.materials || [])
       };
+      
+      console.log('Formatted quote with materials:', formattedQuote.materials);
       
       setFormData(formattedQuote);
       setCreatedQuote(formattedQuote);
@@ -350,8 +364,60 @@ export default function QuoteDetailPage({ params }) {
         // Continue anyway with empty craftsman data
       }
       
-      // Generate PDF with the quote data
-      await generateQuotePdf(formData, craftsmanData);
+      // DEBUGGING: Log materials information before generating PDF
+      console.log('========= MATERIALS DATA DEBUG (Quote Detail) =========');
+      console.log('FormData.materials:', formData.materials);
+      console.log('Materials valid array?', Array.isArray(formData.materials));
+      console.log('Materials length:', Array.isArray(formData.materials) ? formData.materials.length : 0);
+      console.log('Total materials price:', formData.total_materials_price);
+      
+      // If materials array is missing but we have the ID, try to fetch materials
+      if ((!Array.isArray(formData.materials) || formData.materials.length === 0) && formData.id) {
+        try {
+          console.log('Attempting to fetch materials for quote ID:', formData.id);
+          // Explicit request to fetch materials for this quote
+          const materialsResponse = await fetcher(`/api/quotes/${formData.id}?materials=true`);
+          if (materialsResponse.ok) {
+            const freshData = await materialsResponse.json();
+            if (Array.isArray(freshData.materials) && freshData.materials.length > 0) {
+              console.log('Successfully retrieved materials from API:', freshData.materials.length);
+              formData.materials = freshData.materials;
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch materials:', err);
+          // Continue with empty materials
+        }
+      }
+      
+      console.log('========= END MATERIALS DEBUG =========');
+      
+      // CRITICAL FIX: Make sure materials data is properly structured before PDF generation
+      const quoteDataForPdf = {
+        ...formData,
+        // If materials array is missing but we have a price, create a placeholder
+        materials: Array.isArray(formData.materials) && formData.materials.length > 0
+          ? formData.materials
+          : (formData.total_materials_price && parseFloat(formData.total_materials_price) > 0 
+              ? [{
+                  name: 'Materialien',
+                  quantity: 1,
+                  unit: 'Pauschal',
+                  unit_price: parseFloat(formData.total_materials_price)
+                }] 
+              : [])
+      };
+      
+      // Generate PDF with the quote data using dynamic import to avoid DOM errors
+      console.log('Importing PDF generator...');
+      const pdfModule = await import('../../../lib/utils/pdfGenerator');
+      console.log('PDF module imported:', pdfModule);
+      const pdfGenerator = pdfModule.default || pdfModule;
+      console.log('PDF generator obtained:', pdfGenerator);
+      
+      // Use the quote PDF generator
+      console.log('Generating quote PDF with data:', quoteDataForPdf);
+      await pdfGenerator.generateQuotePdf(quoteDataForPdf, craftsmanData);
       
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -402,84 +468,58 @@ export default function QuoteDetailPage({ params }) {
   return (
     <>
       <Header />
-      <div className="flex-1 bg-gradient-to-b from-[#132f4c] to-[#0d253f]">
+      <div className="flex-1 bg-black">
         <main className="container mx-auto px-4 py-8">
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-white">Angebotsdetails</h1>
+            <h1 className="text-3xl font-bold text-white flex items-center">
+              <svg className="w-7 h-7 mr-2 text-[#ffcb00]" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+              </svg>
+              Angebotsdetails
+            </h1>
             <div className="flex space-x-3">
-              <Link href="/quotes" className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-white">
-                Zurück zur Übersicht
+              <Link href="/quotes" className="text-[#ffcb00] hover:text-[#e6b800] transition-colors">
+                &larr; Zurück zu Angeboten
               </Link>
             </div>
           </div>
 
           {error && (
-            <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-xl text-white">
+            <div className="mb-4 p-4 bg-red-500/10 border border-red-500/50 rounded-xl text-red-400 flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"></path></svg>
               {error}
             </div>
           )}
 
           {loading ? (
-            <div className="bg-[#1e3a5f]/50 rounded-xl p-8 mb-8 flex items-center justify-center">
+            <div className="bg-[#2a2a2a]/50 rounded-xl p-8 mb-8 flex items-center justify-center">
               <div className="h-8 w-8 border-4 border-[#ffcb00] border-t-transparent rounded-full animate-spin"></div>
             </div>
           ) : (
-            <div className="bg-[#1e3a5f]/50 rounded-xl p-8 mb-8">
+            <div className="bg-[#2a2a2a]/70 backdrop-blur-md rounded-2xl shadow-xl border border-[#2a2a2a] overflow-hidden mb-8">
+              <div className="p-6">
               {success && !editMode && (
-                <div className="mb-6 p-4 bg-green-500/20 border border-green-500 rounded-xl text-white">
+                <div className="mb-6 p-4 bg-green-500/10 border border-green-500/50 rounded-xl text-green-400 flex items-center">
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
                   Angebot erfolgreich aktualisiert!
                 </div>
               )}
 
-              {/* Action buttons row */}
-              <div className="flex flex-wrap gap-3 mb-6">
-                <button
-                  onClick={handleEditToggle}
-                  className={`px-4 py-2 ${editMode ? 'bg-gray-600' : 'bg-blue-600'} hover:bg-blue-700 rounded-lg text-white`}
-                >
-                  {editMode ? 'Bearbeitung abbrechen' : 'Angebot bearbeiten'}
-                </button>
-                
-                <button
-                  onClick={handleGeneratePdf}
-                  disabled={pdfLoading}
-                  className={`px-4 py-2 ${pdfLoading ? 'bg-gray-600 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} rounded-lg text-white flex items-center`}
-                >
-                  {pdfLoading ? (
-                    <>
-                      <span className="mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      PDF wird erstellt...
-                    </>
-                  ) : 'PDF erstellen'}
-                </button>
-                
-                <button
-                  onClick={handleConvertToInvoice}
-                  disabled={submitting}
-                  className={`px-4 py-2 ${submitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-[#ffcb00] hover:bg-[#e6b800]'} text-black font-semibold rounded-lg`}
-                >
-                  {submitting ? (
-                    <>
-                      <span className="mr-2 h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
-                      Wird konvertiert...
-                    </>
-                  ) : 'In Rechnung umwandeln'}
-                </button>
-              </div>
+              {/* Action buttons removed from top */}
 
               {/* Quote details form */}
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Customer selection */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Kunde
                     </label>
                     <select
                       name="customer_id"
                       value={formData.customer_id || ''}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       required
                       disabled={!editMode}
                     >
@@ -494,14 +534,14 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Appointment selection */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Zugehöriger Termin (optional)
                     </label>
                     <select
                       name="appointment_id"
                       value={formData.appointment_id || ''}
                       onChange={handleAppointmentChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       disabled={loadingAppointments || !editMode}
                     >
                       <option value="">Keinen Termin auswählen</option>
@@ -521,7 +561,7 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Location */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Standort
                     </label>
                     <input
@@ -529,14 +569,14 @@ export default function QuoteDetailPage({ params }) {
                       name="location"
                       value={formData.location || ''}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       disabled={!editMode}
                     />
                   </div>
                   
                   {/* Service Date */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Leistungsdatum
                     </label>
                     <input
@@ -544,7 +584,7 @@ export default function QuoteDetailPage({ params }) {
                       name="service_date"
                       value={formData.service_date || ''}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       disabled={!editMode}
                     />
                   </div>
@@ -558,7 +598,7 @@ export default function QuoteDetailPage({ params }) {
                         id="vat_exempt"
                         checked={formData.vat_exempt}
                         onChange={handleVatExemptChange}
-                        className="h-4 w-4 rounded border-white/10 focus:ring-[#ffcb00] bg-[#1e3a5f] text-[#ffcb00]"
+                        className="h-4 w-4 rounded border-white/10 focus:ring-[#ffcb00] bg-[#2a2a2a] text-[#ffcb00]"
                         disabled={!editMode}
                       />
                       <label htmlFor="vat_exempt" className="ml-2 text-sm">
@@ -569,7 +609,7 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Amount */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Betrag (netto) €
                     </label>
                     <div className="relative">
@@ -581,7 +621,7 @@ export default function QuoteDetailPage({ params }) {
                         onChange={handleAmountChange}
                         step="0.01"
                         min="0"
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                        className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                         required
                         disabled={!editMode}
                       />
@@ -590,7 +630,7 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Tax Amount */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Mehrwertsteuer €
                     </label>
                     <div className="relative">
@@ -602,7 +642,7 @@ export default function QuoteDetailPage({ params }) {
                         onChange={handleChange}
                         step="0.01"
                         min="0"
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                        className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                         readOnly
                         disabled={true}
                       />
@@ -614,7 +654,7 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Total Amount */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Gesamtbetrag €
                     </label>
                     <div className="relative">
@@ -626,7 +666,7 @@ export default function QuoteDetailPage({ params }) {
                         onChange={handleChange}
                         step="0.01"
                         min="0"
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                        className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                         required
                         readOnly
                         disabled={true}
@@ -639,7 +679,7 @@ export default function QuoteDetailPage({ params }) {
                   
                   {/* Due Date */}
                   <div>
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Gültig bis
                     </label>
                     <input
@@ -647,14 +687,14 @@ export default function QuoteDetailPage({ params }) {
                       name="due_date"
                       value={formData.due_date}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       disabled={!editMode}
                     />
                   </div>
                   
                   {/* Notes */}
                   <div className="col-span-1 md:col-span-2">
-                    <label className="block text-sm font-medium mb-1">
+                    <label className="block text-sm font-medium mb-1 text-white/60">
                       Notizen
                     </label>
                     <textarea
@@ -662,15 +702,20 @@ export default function QuoteDetailPage({ params }) {
                       value={formData.notes}
                       onChange={handleChange}
                       rows="4"
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
                       disabled={!editMode}
                     ></textarea>
                   </div>
                 </div>
                 
                 {/* Materials Section */}
-                <div className="mt-8 pt-6 border-t border-white/10">
-                  <h3 className="text-xl font-bold mb-4">Materialien</h3>
+                <div className="mt-8">
+                  <h3 className="text-sm font-medium text-white/60 mb-3 flex items-center">
+                    <svg className="w-4 h-4 mr-2 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m-8-4l8 4m8 4l-8 4m-8-4l8 4m8-11v11"></path>
+                    </svg>
+                    Materialien
+                  </h3>
                   
                   {editMode ? (
                     <MaterialSelector 
@@ -678,11 +723,11 @@ export default function QuoteDetailPage({ params }) {
                       onChange={handleMaterialsChange}
                     />
                   ) : (
-                    <div className="bg-[#1e3a5f] border border-white/10 rounded-xl p-4">
+                    <div className="bg-[#2a2a2a]/50 rounded-xl p-4 border border-[#2a2a2a]">
                       {formData.materials && formData.materials.length > 0 ? (
                         <table className="w-full">
                           <thead>
-                            <tr className="text-left text-sm text-gray-400">
+                            <tr className="text-left text-sm text-white/60">
                               <th className="pb-2">Name</th>
                               <th className="pb-2">Menge</th>
                               <th className="pb-2">Einheit</th>
@@ -694,7 +739,7 @@ export default function QuoteDetailPage({ params }) {
                             {formData.materials.map((material, index) => {
                               const total = (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
                               return (
-                                <tr key={index} className="border-t border-white/5">
+                                <tr key={index} className="border-t border-white/10">
                                   <td className="py-3">{material.name}</td>
                                   <td className="py-3">{material.quantity}</td>
                                   <td className="py-3">{material.unit}</td>
@@ -710,20 +755,26 @@ export default function QuoteDetailPage({ params }) {
                           </tbody>
                         </table>
                       ) : (
-                        <p className="text-gray-400">Keine Materialien ausgewählt</p>
+                        <p className="text-white/60">Keine Materialien</p>
                       )}
                     </div>
                   )}
                 </div>
                 
-                {/* Submit Button - only show when in edit mode */}
-                {editMode && (
-                  <div className="mt-8 pt-6 border-t border-white/10 flex justify-end">
+                {/* Action Buttons */}
+                {editMode ? (
+                  <div className="mt-8 pt-6 border-t border-white/10 flex flex-wrap gap-3 justify-end items-center">
+                    <button
+                      type="button"
+                      onClick={() => setEditMode(false)}
+                      className="px-5 py-2.5 border border-white/20 rounded-xl text-white hover:bg-white/5 transition-all duration-300"
+                    >
+                      Abbrechen
+                    </button>
                     <button
                       type="submit"
                       disabled={submitting || !formData.customer_id || !formData.amount}
-                      className={`px-6 py-2.5 ${submitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-[#ffcb00] hover:bg-[#e6b800]'} text-black font-semibold rounded-xl transition-colors flex items-center justify-center disabled:opacity-60`}
-                      style={{ minWidth: '150px' }}
+                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
                     >
                       {submitting ? (
                         <>
@@ -733,8 +784,36 @@ export default function QuoteDetailPage({ params }) {
                       ) : 'Angebot aktualisieren'}
                     </button>
                   </div>
+                ) : (
+                  <div className="mt-8 flex flex-wrap gap-3 items-center">
+                    <button
+                      type="button"
+                      onClick={() => setEditMode(true)}
+                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5"
+                    >
+                      Angebot bearbeiten
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={handleGeneratePdf}
+                      disabled={pdfLoading}
+                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
+                    >
+                      {pdfLoading ? 'PDF wird erstellt...' : 'PDF erstellen'}
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => router.back()}
+                      className="px-5 py-2.5 border border-white/20 rounded-xl text-white hover:bg-white/5 transition-all duration-300"
+                    >
+                      Zurück
+                    </button>
+                  </div>
                 )}
               </form>
+              </div>
             </div>
           )}
         </main>

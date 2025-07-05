@@ -351,10 +351,15 @@ function InvoicePageContent() {
         tax_amount: parseFloat(formData.tax_amount) || 0, // Use calculated or ensure 0 if exempt
         total_amount: parseFloat(totalAmount.toFixed(2)), // Use calculated total
         appointment_id: formData.appointment_id || null, // Send null if empty string
+        // CRITICAL: Explicitly include materials array for backend storage
+        materials: Array.isArray(formData.materials) ? formData.materials : [],
+        total_materials_price: parseFloat(formData.total_materials_price || 0).toFixed(2),
         // Ensure dates are in correct format if needed by backend (e.g., ISO string)
         // due_date: formData.due_date ? new Date(formData.due_date).toISOString() : null,
         // service_date: formData.service_date ? new Date(formData.service_date).toISOString() : null,
       };
+      
+      console.log('Materials data being sent to backend:', invoiceData.materials);
 
       console.log('Submitting invoice data:', invoiceData);
 

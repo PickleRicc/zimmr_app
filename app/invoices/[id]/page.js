@@ -8,6 +8,7 @@ import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
+import MaterialSelector from '../../components/MaterialSelector';
 
 export default function InvoiceDetailPage({ params }) {
   const invoiceId = use(params).id;
@@ -61,6 +62,28 @@ export default function InvoiceDetailPage({ params }) {
       }
       const data = await response.json();
       console.log('Fetched invoice:', data);
+      
+      // DEBUGGING: Log materials information when invoice is fetched
+      console.log('========= MATERIALS DATA DEBUG (Invoice Fetch) =========');
+      console.log('Fetched invoice.materials:', data.materials);
+      console.log('Materials valid array?', Array.isArray(data.materials));
+      console.log('Materials length:', Array.isArray(data.materials) ? data.materials.length : 0);
+      console.log('Total materials price:', data.total_materials_price);
+      
+      // Calculate total materials price if needed (in case it's not properly set)
+      let calculatedMaterialsPrice = 0;
+      if (Array.isArray(data.materials) && data.materials.length > 0) {
+        calculatedMaterialsPrice = data.materials.reduce((total, material) => {
+          return total + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+        }, 0);
+        console.log('Calculated materials price from array:', calculatedMaterialsPrice);
+        
+        // If there's a significant difference between the stored total and calculated total
+        if (Math.abs(calculatedMaterialsPrice - parseFloat(data.total_materials_price || 0)) > 0.01) {
+          console.warn('Warning: Calculated materials price differs from stored value');
+        }
+      }
+      console.log('========= END MATERIALS DEBUG =========');
       setInvoice(data);
       
       // Initialize form data with invoice data
@@ -123,20 +146,29 @@ export default function InvoiceDetailPage({ params }) {
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  // Calculate total price of materials
+  const calculateMaterialsTotal = (materials = []) => {
+    return materials.reduce((total, material) => {
+      return total + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+    }, 0).toFixed(2);
+  };
+
+  // Handle materials selection changes
+  const handleMaterialsChange = (materials) => {
+    const materialsTotal = calculateMaterialsTotal(materials);
     
     setFormData(prev => {
-      const newData = { ...prev, [name]: value };
+      const serviceTotal = parseFloat(prev.amount) || 0;
+      const taxAmount = prev.vat_exempt ? 0 : (serviceTotal * 0.19).toFixed(2);
+      const subtotal = (serviceTotal + parseFloat(taxAmount)).toFixed(2);
+      const totalAmount = (parseFloat(subtotal) + parseFloat(materialsTotal)).toFixed(2);
       
-      // Auto-calculate total amount when amount or tax_amount changes
-      if (name === 'amount' || name === 'tax_amount') {
-        const amount = parseFloat(newData.amount) || 0;
-        const taxAmount = parseFloat(newData.tax_amount) || 0;
-        newData.total_amount = (amount + taxAmount).toFixed(2);
-      }
-      
-      return newData;
+      return {
+        ...prev,
+        materials: materials,
+        total_materials_price: materialsTotal,
+        total_amount: totalAmount
+      };
     });
   };
 
@@ -163,8 +195,13 @@ export default function InvoiceDetailPage({ params }) {
         ...formData,
         amount: parseFloat(formData.amount),
         tax_amount: parseFloat(formData.tax_amount) || 0,
-        total_amount: parseFloat(formData.total_amount)
+        total_amount: parseFloat(formData.total_amount),
+        // CRITICAL: Explicitly include materials array for backend storage
+        materials: Array.isArray(formData.materials) ? formData.materials : [],
+        total_materials_price: parseFloat(formData.total_materials_price || 0).toFixed(2)
       };
+      
+      console.log('Materials data being sent to backend for update:', invoiceData.materials);
       
       console.log('Submitting invoice update:', invoiceData);
       
@@ -208,22 +245,59 @@ export default function InvoiceDetailPage({ params }) {
         throw new Error('PDF kann nicht generiert werden. Rechnungs-/Angebotsdaten fehlen.');
       }
       
-      // Import the PDF generator utility
-      const pdfGenerator = await import('../../lib/utils/pdfGenerator').then(module => module.default);
+      // Import the PDF generator utility - FIXED: path was incorrect
+      console.log('Importing PDF generator...');
+      const pdfModule = await import('../../../lib/utils/pdfGenerator');
+      const pdfGenerator = pdfModule.default || pdfModule;
+
+      // Debug materials data for PDF generation
+      console.log('========= MATERIALS DATA DEBUG (Invoice Detail PDF) =========');
+      console.log('Invoice.materials:', invoice.materials);
+      console.log('FormData.materials:', formData.materials);
+      console.log('Materials array?', Array.isArray(formData.materials));
+      console.log('Materials length:', Array.isArray(formData.materials) ? formData.materials.length : 0);
+      console.log('Total materials price:', formData.total_materials_price);
       
-      // Get user profile data from the authenticated user object instead of localStorage
-      const craftsmanData = {
-        name: user?.user_metadata?.full_name || 'ZIMMR Craftsman',
-        email: user?.email || '',
-        phone: user?.user_metadata?.phone || '',
-        address: user?.user_metadata?.address || '',
-        tax_id: user?.user_metadata?.tax_id || '',
-        iban: user?.user_metadata?.iban || '',
-        bic: user?.user_metadata?.bic || ''
+      // CRITICAL FIX: If materials array is missing but we have the ID, try to fetch fresh materials
+      if ((!Array.isArray(formData.materials) || formData.materials.length === 0) && invoiceId) {
+        try {
+          console.log('Attempting to fetch fresh materials for invoice ID:', invoiceId);
+          // Explicit request to fetch materials for this invoice
+          const materialsResponse = await authedFetch(`/api/invoices/${invoiceId}?materials=true`);
+          if (materialsResponse.ok) {
+            const freshData = await materialsResponse.json();
+            if (Array.isArray(freshData.materials) && freshData.materials.length > 0) {
+              console.log('Successfully retrieved materials from API:', freshData.materials.length);
+              formData.materials = freshData.materials;
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch fresh materials:', err);
+          // Continue with empty materials
+        }
+      }
+      
+      console.log('Final materials for PDF:', formData.materials);
+      console.log('========= END MATERIALS DEBUG =========');
+
+      // CRITICAL FIX: Prepare data with materials consistency check
+      const invoiceDataForPdf = {
+        ...formData,
+        // Use materials array if we have one, otherwise create placeholder from total price
+        materials: Array.isArray(formData.materials) && formData.materials.length > 0
+          ? formData.materials
+          : (formData.total_materials_price && parseFloat(formData.total_materials_price) > 0 
+              ? [{
+                  name: 'Materialien',
+                  quantity: 1,
+                  unit: 'Pauschal',
+                  unit_price: parseFloat(formData.total_materials_price)
+                }] 
+              : [])
       };
-      
-      // Use the German invoice PDF generator directly (client-side)
-      await pdfGenerator.generateGermanInvoicePdf(invoice, craftsmanData);
+
+      // Generate PDF using the enhanced data
+      await pdfGenerator.generateInvoicePdf(invoiceDataForPdf, craftsmanData);
       
       console.log('German-style invoice PDF generated successfully');
       
@@ -258,17 +332,22 @@ export default function InvoiceDetailPage({ params }) {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <>
       <Header />
-      <div className="min-h-screen px-4 py-8">
-        <main className="container mx-auto">
-          <div className="mb-6">
-            <Link 
-              href="/invoices" 
-              className="text-[#ffcb00] hover:text-[#e6b800] transition-colors"
-            >
-              &larr; Zurück zu Rechnungen
-            </Link>
+      <div className="flex-1 bg-black">
+        <main className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-between mb-8">
+            <h1 className="text-3xl font-bold text-white flex items-center">
+              <svg className="w-7 h-7 mr-2 text-[#ffcb00]" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+              </svg>
+              Rechnungsdetails
+            </h1>
+            <div className="flex space-x-3">
+              <Link href="/invoices" className="text-[#ffcb00] hover:text-[#e6b800] transition-colors">
+                &larr; Zurück zu Rechnungen
+              </Link>
+            </div>
           </div>
           
           {error && (
@@ -500,6 +579,60 @@ export default function InvoiceDetailPage({ params }) {
                       </div>
                     )}
                     
+                    {/* Materials Section */}
+                    <div className="mt-8">
+                      <h3 className="text-sm font-medium text-white/60 mb-3 flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m-8-4l8 4m8 4l-8 4m-8-4l8 4m8-11v11"></path>
+                        </svg>
+                        Materialien
+                      </h3>
+                      {editing ? (
+                        <div className="bg-[#2a2a2a]/50 rounded-xl p-4 border border-[#2a2a2a]">
+                          <MaterialSelector 
+                            selectedMaterials={formData.materials || []}
+                            onChange={handleMaterialsChange}
+                          />
+                        </div>
+                      ) : (
+                        <div className="bg-[#2a2a2a]/50 rounded-xl p-4 border border-[#2a2a2a]">
+                          {invoice.materials && invoice.materials.length > 0 ? (
+                            <table className="w-full">
+                              <thead>
+                                <tr className="text-left text-sm text-white/60">
+                                  <th className="pb-2">Name</th>
+                                  <th className="pb-2">Menge</th>
+                                  <th className="pb-2">Einheit</th>
+                                  <th className="pb-2">Preis (€)</th>
+                                  <th className="pb-2">Gesamt (€)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {invoice.materials.map((material, index) => {
+                                  const total = (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+                                  return (
+                                    <tr key={index} className="border-t border-white/10">
+                                      <td className="py-3">{material.name}</td>
+                                      <td className="py-3">{material.quantity}</td>
+                                      <td className="py-3">{material.unit}</td>
+                                      <td className="py-3">€{parseFloat(material.unit_price).toFixed(2)}</td>
+                                      <td className="py-3">€{total.toFixed(2)}</td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="border-t border-white/10">
+                                  <td colSpan="4" className="py-3 text-right font-bold">Materialien Gesamt:</td>
+                                  <td className="py-3 font-bold">€{parseFloat(invoice.total_materials_price || 0).toFixed(2)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p className="text-white/60">Keine Materialien</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
                     {appointment && (
                       <div className="mt-8">
                         <h3 className="text-sm font-medium text-white/60 mb-3 flex items-center">
@@ -600,6 +733,6 @@ export default function InvoiceDetailPage({ params }) {
         </main>
       </div>
       <Footer />
-    </div>
+    </>
   );
 }
