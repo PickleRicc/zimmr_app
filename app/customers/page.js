@@ -28,22 +28,27 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (authLoading || !user) return;
-    if (customers.length > 0) return; // guard when already fetched
+    // Remove the guard that prevented refetching
+    
+    setLoading(true); // Always show loading state when fetching
+    console.log('Customers page - Fetching customers data');
+    
     (async () => {
       try {
         const res = await fetcherRef.current('/api/customers');
         if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
         const data = res.status === 404 ? [] : await res.json();
+        console.log(`Customers page - Fetched ${data.length} customers`);
         setCustomers(data);
         setSuccess(''); // reset any prior success
       } catch (e) {
-        console.error(e);
+        console.error('Customers page - Error fetching customers:', e);
         setError('Fehler beim Laden der Kunden.');
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [authLoading, user, router.pathname]); // Added dependencies to refetch when page is visited
 
   const filteredCustomers = customers.filter(c => {
     if (!searchTerm) return true;

@@ -31,104 +31,77 @@ const supabase = createClient(
 
 export async function GET(req) {
   try {
+    console.log('Customers API - Processing GET request');
+    
+    // Get user from auth header with improved error handling
     const user = await getUserFromRequest(req);
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+    if (!user) {
+      console.log('Customers API - Unauthorized request - No valid user found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    console.log('Customers API - User authenticated:', user.id);
+    
     const { searchParams } = new URL(req.url);
     const specificId = searchParams.get('id');
-
-    // Find craftsman uuid for this user
-    const { data: craftsmanRow, error: craftsmanError } = await supabase
-      .from('craftsmen')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (craftsmanError) {
-      console.error('Error finding craftsman:', craftsmanError);
-      return NextResponse.json({ error: 'Failed to retrieve craftsman profile' }, { status: 500 });
-    }
-
-    if (!craftsmanRow) {
-      console.log('No craftsman found for user, attempting to create one');
-      // Try to create a craftsman record
-      try {
-        const craftsmanId = await getOrCreateCraftsmanId(user);
-        if (craftsmanId) {
-          console.log('Successfully created craftsman:', craftsmanId);
-          if (specificId) {
-            // Continue with the specific customer query
-            const { data, error } = await supabase
-              .from('customers')
-              .select('*')
-              .eq('id', specificId)
-              .eq('craftsman_id', craftsmanId)
-              .single();
-            
-            if (error) {
-              console.error('Error fetching specific customer:', error);
-              return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
-            }
-            
-            return NextResponse.json(data || null);
-          }
-          
-          // Or get all customers for the new craftsman
-          const { data, error } = await supabase
-            .from('customers')
-            .select('*')
-            .eq('craftsman_id', craftsmanId)
-            .order('name');
-            
-          if (error) {
-            console.error('Error fetching customers after creating craftsman:', error);
-            return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
-          }
-          
-          return NextResponse.json(data || []);
-        }
-      } catch (createErr) {
-        console.error('Failed to create craftsman:', createErr);
-        return NextResponse.json({ error: 'Failed to create craftsman profile' }, { status: 500 });
+    console.log(`Customers API - Request parameters: ${specificId ? `id=${specificId}` : 'listing all'}`);
+    
+    // Use our improved getOrCreateCraftsmanId function to reliably get a craftsman ID
+    try {
+      const craftsmanId = await getOrCreateCraftsmanId(user);
+      
+      if (!craftsmanId) {
+        console.error('Customers API - Failed to get or create craftsman ID');
+        return NextResponse.json({ error: 'Failed to retrieve craftsman profile' }, { status: 500 });
       }
       
-      // If we couldn't create a craftsman, return empty array
-      return NextResponse.json([], { status: 200 });
-    }
-
-    // Craftsman found, proceed with queries
-    if (specificId) {
+      console.log('Customers API - Using craftsman ID:', craftsmanId);
+      
+      // Now that we have a craftsman ID, handle the specific requests
+      if (specificId) {
+        console.log('Customers API - Fetching specific customer:', specificId);
+        
+        // Continue with the specific customer query
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', specificId)
+          .eq('craftsman_id', craftsmanId)
+          .single();
+        
+        if (error) {
+          if (error.code === 'PGRST116') { // not found
+            console.log('Customers API - Customer not found:', specificId);
+            return NextResponse.json(null, { status: 404 });
+          }
+          
+          console.error('Customers API - Error fetching specific customer:', error);
+          return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
+        }
+        
+        console.log('Customers API - Successfully fetched customer');
+        return NextResponse.json(data || null);
+      }
+      
+      // Get all customers for this craftsman
+      console.log('Customers API - Fetching all customers for craftsman:', craftsmanId);
       const { data, error } = await supabase
         .from('customers')
         .select('*')
-        .eq('id', specificId)
-        .eq('craftsman_id', craftsmanRow.id)
-        .single();
+        .eq('craftsman_id', craftsmanId)
+        .order('name');
         
       if (error) {
-        if (error.code === 'PGRST116') { // not found
-          return NextResponse.json(null, { status: 404 });
-        }
-        
-        console.error('Error fetching specific customer:', error);
+        console.error('Customers API - Error fetching customers list:', error);
         return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
       }
       
-      return NextResponse.json(data || null);
+      console.log(`Customers API - Successfully fetched ${data?.length || 0} customers`);
+      return NextResponse.json(data || []);
+    } catch (err) {
+      console.error('Customers API - Error in craftsman processing:', err);
+      return NextResponse.json({ error: 'Failed to process craftsman: ' + err.message }, { status: 500 });
     }
-
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('craftsman_id', craftsmanRow.id)
-      .order('name');
-
-    if (error) {
-      console.error('Error fetching customers list:', error);
-      return NextResponse.json({ error: 'Database error: ' + error.message }, { status: 500 });
-    }
-    
-    return NextResponse.json(data || []);
   } catch (err) {
     console.error('/api/customers GET error', err.message);
     return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 });
