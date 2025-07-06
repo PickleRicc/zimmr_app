@@ -7,9 +7,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+// Log which environment variables are available (for debugging)
+const hasServiceRoleKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+const hasAnonKey = !!process.env.SUPABASE_ANON_KEY || !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+console.log('Quotes API - Supabase client initialization:', { 
+  hasUrl: !!supabaseUrl, 
+  hasServiceRoleKey, 
+  hasAnonKey,
+  url: supabaseUrl
+});
+
+// Prioritize service role key for admin operations
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+  supabaseUrl,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   {
     auth: { persistSession: false }
   }
@@ -22,51 +35,107 @@ const camelToSnake = (obj = {}) =>
   );
 
 async function getUserFromRequest(req) {
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return null;
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  if (error) return null;
-  return user;
+  try {
+    // Log the request to help debug authentication issues
+    console.log('Quotes API - Request Headers:', {
+      authorization: req.headers.get('authorization') ? 'Present (not shown)' : 'Missing',
+      'content-type': req.headers.get('content-type'),
+      origin: req.headers.get('origin'),
+      referer: req.headers.get('referer')
+    });
+    
+    const authHeader = req.headers.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : null;
+    
+    if (!token) {
+      console.log('Quotes API - No auth token provided in request');
+      return null;
+    }
+    
+    console.log('Quotes API - Validating auth token...');
+    const { data, error } = await supabase.auth.getUser(token);
+    
+    if (error) {
+      console.error('Quotes API - Auth token validation failed:', error.message);
+      return null;
+    }
+    
+    if (!data || !data.user) {
+      console.error('Quotes API - Auth response missing user data');
+      return null;
+    }
+    
+    console.log('Quotes API - User authenticated successfully:', data.user.id);
+    return data.user;
+  } catch (err) {
+    console.error('Quotes API - Error in authentication process:', err.message);
+    return null;
+  }
 }
 
 async function getOrCreateCraftsmanId(user) {
   try {
-    // First, try to find existing craftsman
-    const { data: row } = await supabase
-      .from('craftsmen')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
+    console.log('Quotes API - Attempting to get or create craftsman for user:', user.id);
+    console.log('Quotes API - User metadata:', JSON.stringify(user.user_metadata || {}));
+    
+    // First, try to find existing craftsman - check multiple times with delay if needed
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      const { data: row, error: findError } = await supabase
+        .from('craftsmen')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
       
-    if (row) {
-      console.log('Found existing craftsman:', row.id);
-      return row.id;
+      if (findError) {
+        console.log(`Quotes API - Find attempt ${retryCount + 1} failed:`, findError.message);
+      }
+        
+      if (row) {
+        console.log('Quotes API - Found existing craftsman:', row.id);
+        return row.id;
+      }
+      
+      // Only retry finding if we haven't reached max retries yet
+      if (retryCount < maxRetries) {
+        console.log(`Quotes API - Craftsman not found, retry attempt ${retryCount + 1}`);
+        await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retrying
+        retryCount++;
+      } else {
+        break;
+      }
     }
     
-    console.log('No craftsman found, attempting to create one with RLS bypass');
+    console.log('Quotes API - Creating new craftsman with service role key, user_id:', user.id);
     
-    // If no craftsman found, try to create one with service role key
+    // Add all required fields that might be needed by RLS policies
+    const craftsmanData = { 
+      user_id: user.id, 
+      name: user.user_metadata?.full_name || user.email || 'New User',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      active: true
+    };
+    
+    console.log('Quotes API - Craftsman data for insert:', JSON.stringify(craftsmanData));
+    
+    // Try to create the craftsman
     const { data: created, error: createErr } = await supabase
       .from('craftsmen')
-      .insert({ 
-        user_id: user.id, 
-        name: user.user_metadata?.full_name || user.email,
-        // Add required fields to pass RLS policies
-        created_at: new Date().toISOString()
-      })
+      .insert(craftsmanData)
       .select('id')
       .single();
       
     if (createErr) {
-      console.error('Error creating craftsman:', createErr);
+      console.error('Quotes API - Error creating craftsman:', createErr.message);
+      console.error('Quotes API - Error details:', JSON.stringify(createErr));
       
-      // If we get RLS error, try to find the craftsman record again
-      // (it might exist but was created in another session/deployment)
+      // If RLS error, make one final attempt to find an existing record
+      // It might have been created in parallel by another request
       if (createErr.message && createErr.message.includes('violates row-level security policy')) {
+        console.log('Quotes API - RLS policy violation - checking one more time for existing craftsman');
         const { data: existingRow } = await supabase
           .from('craftsmen')
           .select('id')
@@ -74,18 +143,41 @@ async function getOrCreateCraftsmanId(user) {
           .single();
           
         if (existingRow) {
-          console.log('Found craftsman on retry:', existingRow.id);
+          console.log('Quotes API - Found craftsman on final retry:', existingRow.id);
           return existingRow.id;
         }
       }
       
+      // If we still can't find it, we need to use RPC to create the craftsman
+      // as a last resort to bypass RLS
+      try {
+        console.log('Quotes API - Attempting to create craftsman via RPC function');
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('create_craftsman_for_user', {
+          user_id_param: user.id,
+          name_param: user.user_metadata?.full_name || user.email || 'New User'
+        });
+        
+        if (rpcError) {
+          console.error('Quotes API - RPC function error:', rpcError);
+          throw rpcError;
+        }
+        
+        if (rpcResult) {
+          console.log('Quotes API - Created craftsman via RPC function:', rpcResult);
+          return rpcResult;
+        }
+      } catch (rpcErr) {
+        console.error('Quotes API - Failed to create craftsman via RPC:', rpcErr);
+      }
+      
+      // If all else fails, throw the original error
       throw createErr;
     }
     
-    console.log('Created new craftsman:', created.id);
+    console.log('Quotes API - Successfully created new craftsman:', created.id);
     return created.id;
   } catch (err) {
-    console.error('Error in getOrCreateCraftsmanId:', err);
+    console.error('Quotes API - Error in getOrCreateCraftsmanId:', err);
     throw new Error('Failed to retrieve craftsman profile: ' + err.message);
   }
 }

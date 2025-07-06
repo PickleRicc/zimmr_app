@@ -16,15 +16,36 @@ const supabase = createClient(
 );
 
 async function authedFetch(input, init = {}) {
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  const headers = {
-    ...(init.headers || {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
-  };
-  return fetch(input, { ...init, headers });
+  try {
+    // Get the session in a more reliable way
+    const { data, error } = await supabase.auth.getSession();
+    
+    // Debug logs to help identify auth issues
+    console.log('Auth fetch - Session retrieval:', {
+      hasSession: !!data?.session,
+      hasAccessToken: !!data?.session?.access_token,
+      error: error?.message
+    });
+    
+    const token = data?.session?.access_token;
+    
+    // Log the request being made (without showing the full token)
+    console.log(`Auth fetch - ${init.method || 'GET'} request to ${input}`, {
+      hasAuthHeader: !!token,
+      tokenPrefix: token ? token.substring(0, 10) + '...' : 'none'
+    });
+    
+    const headers = {
+      ...(init.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+    
+    return fetch(input, { ...init, headers });
+  } catch (err) {
+    console.error('Error in authedFetch:', err);
+    // Still try the fetch without auth as fallback
+    return fetch(input, { ...init });
+  }
 }
 
 function toQuery(params = {}) {
