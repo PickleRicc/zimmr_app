@@ -5,12 +5,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-// Initialise Supabase client for server-side use
+// Log which environment variables are available (for debugging)
+const hasServiceRoleKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+const hasAnonKey = !!process.env.SUPABASE_ANON_KEY || !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-// Initialise Supabase client for server-side use
+console.log('Appointments API - Supabase client initialization:', { 
+  hasUrl: !!supabaseUrl, 
+  hasServiceRoleKey, 
+  hasAnonKey,
+  url: supabaseUrl
+});
+
+// Prioritize service role key for admin operations
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
+  supabaseUrl,
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   {
     auth: {
       persistSession: false
@@ -20,21 +30,44 @@ const supabase = createClient(
 
 // Helper: authenticate request using Bearer token
 async function getUserFromRequest(req) {
-  const authHeader = req.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.replace('Bearer ', '')
-    : null;
-
-  if (!token) return null;
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  if (error) {
-    console.error('Supabase auth error', error.message);
+  try {
+    // Log the request to help debug authentication issues
+    console.log('Appointments API - Request Headers:', {
+      authorization: req.headers.get('authorization') ? 'Present (not shown)' : 'Missing',
+      'content-type': req.headers.get('content-type'),
+      origin: req.headers.get('origin'),
+      referer: req.headers.get('referer')
+    });
+    
+    const authHeader = req.headers.get('authorization') || '';
+    const token = authHeader.startsWith('Bearer ')
+      ? authHeader.replace('Bearer ', '')
+      : null;
+    
+    if (!token) {
+      console.log('Appointments API - No auth token provided in request');
+      return null;
+    }
+    
+    console.log('Appointments API - Validating auth token...');
+    const { data, error } = await supabase.auth.getUser(token);
+    
+    if (error) {
+      console.error('Appointments API - Auth token validation failed:', error.message);
+      return null;
+    }
+    
+    if (!data || !data.user) {
+      console.error('Appointments API - Auth response missing user data');
+      return null;
+    }
+    
+    console.log('Appointments API - User authenticated successfully:', data.user.id);
+    return data.user;
+  } catch (err) {
+    console.error('Appointments API - Error in authentication process:', err.message);
     return null;
   }
-  return user;
 }
 
 export async function GET(req) {
