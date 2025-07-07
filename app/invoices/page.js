@@ -62,10 +62,22 @@ export default function InvoicesPage() {
       
       const res = await fetcher('/api/invoices');
       if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      console.log('Fetched invoices:', data);
-      setInvoices(data);
+      const responseData = await res.json();
+      console.log('Fetched invoices response:', responseData);
+      
+      // Handle both standardized response format and legacy format
+      const invoicesArray = responseData.data || responseData;
+      
+      console.log('Processed invoices array:', invoicesArray);
+      setInvoices(invoicesArray);
       setError(null);
+      
+      // Display success message if available in API response
+      if (responseData.message && responseData.status === 'success') {
+        setSuccess(responseData.message);
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccess(''), 5000);
+      }
     } catch (err) {
       console.error('Error fetching invoices:', err);
       setError('Fehler beim Laden von Rechnungen. Bitte versuchen Sie es erneut.');
@@ -116,22 +128,51 @@ export default function InvoicesPage() {
       setStatusUpdateId(invoiceId);
       
       // Call API to update invoice status
-      await fetcher(`/api/invoices/${invoiceId}`, {
+      const res = await fetcher(`/api/invoices/${invoiceId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
       
-      // Update local state to reflect the change
+      // Parse response to get updated data
+      const responseData = res.ok ? await res.json() : null;
+      console.log('Status update response:', responseData);
+      
+      // Get the updated invoice data from the response if available
+      const updatedInvoice = responseData?.data || responseData;
+      
+      // Update local state to reflect the change, using updated data from API if available
       setInvoices(invoices.map(invoice => 
         invoice.id === invoiceId 
-          ? { ...invoice, status: newStatus } 
+          ? { ...invoice, ...updatedInvoice, status: newStatus } 
           : invoice
       ));
       
+      // Display success message if provided in response
+      if (responseData?.status === 'success' && responseData?.message) {
+        setSuccess(responseData.message);
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccess(''), 5000);
+      }
+      
     } catch (err) {
       console.error('Error updating invoice status:', err);
-      alert('Fehler beim Aktualisieren des Rechnungsstatus. Bitte versuchen Sie es erneut.');
+      
+      // Try to extract error message from standardized response format
+      let errorMessage = 'Fehler beim Aktualisieren des Rechnungsstatus. Bitte versuchen Sie es erneut.';
+      try {
+        if (err.response) {
+          const errorData = await err.response.json();
+          errorMessage = errorData.message || errorData.error || errorMessage;
+        }
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+      }
+      
+      // Show error message in the UI instead of an alert
+      setError(errorMessage);
+      // Clear error after 5 seconds
+      setTimeout(() => setError(null), 5000);
     } finally {
       setUpdatingStatus(false);
       setStatusUpdateId(null);
@@ -153,13 +194,21 @@ export default function InvoicesPage() {
       setDeletingId(id);
 
       // delete on server
-      await fetcher(`/api/invoices/${id}`, { method: 'DELETE' });
+      const res = await fetcher(`/api/invoices/${id}`, { method: 'DELETE' });
+      const responseData = res.ok ? await res.json() : null;
+      console.log('Delete response:', responseData);
 
       const invoice = invoices.find(inv => inv.id === id);
       const customerName = invoice?.customer_name || 'Kunde';
 
-      setSuccess(`Rechnung für ${customerName} erfolgreich gelöscht`);
+      // Display success message from API if available, otherwise use default
+      const successMessage = responseData?.message || `Rechnung für ${customerName} erfolgreich gelöscht`;
+      setSuccess(successMessage);
+      
+      // Refresh invoices list
       await fetchInvoices();
+      
+      // Clear success message after 5 seconds
       setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       console.error('Error deleting invoice:', err);
@@ -168,13 +217,24 @@ export default function InvoicesPage() {
         status: err.response?.status,
         data: err.response?.data
       });
-      setError(err.response?.data?.error || `Fehler beim Löschen der Rechnung: ${err.message}`);
+      
+      // Try to extract error message from standardized response format
+      let errorMessage = `Fehler beim Löschen der Rechnung: ${err.message}`;
+      try {
+        if (err.response) {
+          const errorData = await err.response.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        }
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+      }
+      
+      setError(errorMessage);
       
       // Clear error message after 5 seconds
       setTimeout(() => setError(null), 5000);
     } finally {
       setDeletingId(null);
-      setError(null);
     }
   };
 

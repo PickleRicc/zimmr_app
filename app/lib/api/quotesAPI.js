@@ -19,7 +19,10 @@ export const quotesAPI = {
       headers: { ...defaultHeaders() }
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const response = await res.json();
+    
+    // Handle the new standardized API response format
+    return response.data || response;
   },
 
   async get(id) {
@@ -27,7 +30,10 @@ export const quotesAPI = {
       headers: { ...defaultHeaders() }
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const response = await res.json();
+    
+    // Handle the new standardized API response format
+    return response.data || response;
   },
 
   async create(data) {
@@ -47,7 +53,10 @@ export const quotesAPI = {
       body: JSON.stringify(quoteData)
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const response = await res.json();
+    
+    // Handle the new standardized API response format
+    return response.data || response;
   },
 
   async update(id, data) {
@@ -70,7 +79,10 @@ export const quotesAPI = {
       body: JSON.stringify(quoteData)
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const response = await res.json();
+    
+    // Handle the new standardized API response format
+    return response.data || response;
   },
 
   async remove(id) {
@@ -116,7 +128,10 @@ export const quotesAPI = {
       body: JSON.stringify(craftsmanId ? { craftsman_id: craftsmanId } : {})
     });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+    const response = await res.json();
+    
+    // Handle the new standardized API response format
+    return response.data || response;
   },
 
 };

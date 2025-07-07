@@ -44,12 +44,28 @@ export default function ProfilePage() {
     (async () => {
       try {
         const res = await authedFetch("/api/profile");
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+        
+        if (!res.ok) {
+          // Try to extract error message from standardized response
+          const errorData = await res.json().catch(() => null);
+          throw new Error(errorData?.message || `HTTP Error ${res.status}`);
+        }
+        
+        // Handle standardized API response format
+        const responseData = await res.json();
+        
+        // Extract data, supporting both new standardized and legacy formats
+        const data = responseData.data !== undefined ? responseData.data : responseData;
+        
+        // Log any API message
+        if (responseData.message) {
+          console.log('Profile API Message:', responseData.message);
+        }
+        
         populate(data);
       } catch (err) {
         console.error(err);
-        setError("Failed to load your profile.");
+        setError(err.message || "Failed to load your profile.");
       } finally {
         setLoading(false);
       }
@@ -93,8 +109,25 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(await res.text());
-      setSuccess("Saved!");
+      
+      if (!res.ok) {
+        // Try to extract error message from standardized response
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${res.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await res.json();
+      
+      // Use API message for success feedback if available
+      const successMessage = responseData.message || "Profile saved!";
+      setSuccess(successMessage);
+      
+      // Update profile data if returned in the response
+      if (responseData.data) {
+        populate(responseData.data);
+      }
+      
       setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
       console.error(err);

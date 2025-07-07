@@ -38,11 +38,17 @@ export default function AppointmentsPage() {
         if (!aptRes.ok && aptRes.status !== 404) throw new Error(`Appointments HTTP ${aptRes.status}`);
         if (!custRes.ok && custRes.status !== 404) throw new Error(`Customers HTTP ${custRes.status}`);
         const aptData = aptRes.status === 404 ? [] : await aptRes.json();
-        setAppointments(Array.isArray(aptData) ? aptData : []);
+        // Handle the standardized API response format where data is in aptData.data
+        const appointmentsArray = aptData.data && Array.isArray(aptData.data) ? aptData.data : 
+                                Array.isArray(aptData) ? aptData : [];
+        setAppointments(appointmentsArray);
         if (custRes.ok) {
           const custData = custRes.status === 404 ? [] : await custRes.json();
+          // Handle the standardized API response format where data is in custData.data
+          const customersArray = custData.data && Array.isArray(custData.data) ? custData.data : 
+                              Array.isArray(custData) ? custData : [];
           const map = {};
-          custData?.forEach(c => (map[c.id] = c));
+          customersArray?.forEach(c => (map[c.id] = c));
           setCustomers(map);
         }
       } catch (e) {
@@ -73,10 +79,10 @@ export default function AppointmentsPage() {
   const handleApprove = async id => {
     try {
       setProcessingAppointment(id);
-      const res = await fetcher(`/api/appointments/${id}`, {
+      const res = await fetcher(`/api/appointments`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approval_status: 'approved' })
+        body: JSON.stringify({ id, approval_status: 'approved' })
       });
       if (!res.ok) throw new Error();
       setAppointments(prev => prev.map(a => (a.id === id ? { ...a, approval_status: 'approved' } : a)));
@@ -92,10 +98,10 @@ export default function AppointmentsPage() {
     if (!appointmentToReject) return;
     try {
       setProcessingAppointment(appointmentToReject.id);
-      const res = await fetcher(`/api/appointments/${appointmentToReject.id}`, {
+      const res = await fetcher(`/api/appointments`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approval_status: 'rejected', reject_reason: rejectReason })
+        body: JSON.stringify({ id: appointmentToReject.id, approval_status: 'rejected', reject_reason: rejectReason })
       });
       if (!res.ok) throw new Error();
       setAppointments(prev => prev.map(a => (a.id === appointmentToReject.id ? { ...a, approval_status: 'rejected' } : a)));
@@ -111,7 +117,7 @@ export default function AppointmentsPage() {
   const handleDelete = async id => {
     try {
       setProcessingAppointment(id);
-      const res = await fetcher(`/api/appointments/${id}`, { method: 'DELETE' });
+      const res = await fetcher(`/api/appointments?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setAppointments(prev => prev.filter(a => a.id !== id));
     } catch (e) {

@@ -81,9 +81,11 @@ export const invoicesAPI = {
         console.error('Error fetching invoices:', errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
-      console.log('Successfully fetched invoices:', data.length || 0);
-      return data;
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const invoicesArray = responseData.data || responseData;
+      console.log('Successfully fetched invoices:', invoicesArray.length || 0);
+      return invoicesArray;
     } catch (error) {
       console.error('Exception in invoicesAPI.getAll:', error);
       throw error;
@@ -98,9 +100,11 @@ export const invoicesAPI = {
         console.error(`Error fetching invoice ${id}:`, errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const invoice = responseData.data || responseData;
       console.log(`Successfully fetched invoice ${id}`);
-      return data;
+      return invoice;
     } catch (error) {
       console.error(`Exception in invoicesAPI.get(${id}):`, error);
       throw error;
@@ -121,9 +125,11 @@ export const invoicesAPI = {
         console.error('Error creating invoice:', errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
-      console.log('Successfully created invoice:', data.id);
-      return data;
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const invoice = responseData.data || responseData.invoice || responseData;
+      console.log('Successfully created invoice:', invoice.id || 'unknown');
+      return invoice;
     } catch (error) {
       console.error('Exception in invoicesAPI.create:', error);
       throw error;
@@ -142,9 +148,11 @@ export const invoicesAPI = {
         console.error(`Error updating invoice ${id}:`, errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const invoice = responseData.data || responseData;
       console.log(`Successfully updated invoice ${id}`);
-      return data;
+      return invoice;
     } catch (error) {
       console.error(`Exception in invoicesAPI.update(${id}):`, error);
       throw error;
@@ -171,9 +179,11 @@ export const quotesAPI = {
         console.error('Error fetching quotes:', errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
-      console.log('Successfully fetched quotes:', data.length || 0);
-      return data;
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const quotesArray = responseData.data || responseData;
+      console.log('Successfully fetched quotes:', quotesArray.length || 0);
+      return quotesArray;
     } catch (error) {
       console.error('Exception in quotesAPI.getAll:', error);
       throw error;
@@ -188,9 +198,11 @@ export const quotesAPI = {
         console.error(`Error fetching quote ${id}:`, errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const quote = responseData.data || responseData;
       console.log(`Successfully fetched quote ${id}`);
-      return data;
+      return quote;
     } catch (error) {
       console.error(`Exception in quotesAPI.get(${id}):`, error);
       throw error;
@@ -212,9 +224,11 @@ export const quotesAPI = {
         console.error('Error creating quote:', errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
-      console.log('Successfully created quote:', data.id);
-      return data;
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const quote = responseData.data || responseData;
+      console.log('Successfully created quote:', quote.id || 'unknown');
+      return quote;
     } catch (error) {
       console.error('Exception in quotesAPI.create:', error);
       throw error;
@@ -234,9 +248,11 @@ export const quotesAPI = {
         console.error(`Error updating quote ${id}:`, errorText);
         throw new Error(errorText);
       }
-      const data = await res.json();
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const quote = responseData.data || responseData;
       console.log(`Successfully updated quote ${id}`);
-      return data;
+      return quote;
     } catch (error) {
       console.error(`Exception in quotesAPI.update(${id}):`, error);
       throw error;

@@ -95,10 +95,14 @@ export default function QuotesPage() {
       setLoading(true);
       
       // Use quotesAPI to fetch only quotes for this craftsman
-      const data = await fetcher('/api/quotes').then(r=>r.json());
+      const response = await fetcher('/api/quotes').then(r=>r.json());
       
-      console.log('Fetched quotes:', data);
-      setQuotes(data);
+      console.log('Fetched quotes:', response);
+      
+      // Handle the new standardized API response format
+      const quotesData = response.data || response;
+      
+      setQuotes(quotesData);
       setError(null);
     } catch (err) {
       console.error('Error fetching quotes:', err);

@@ -1,67 +1,41 @@
 // API route for handling material confirmation status
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+import { 
+  createSupabaseClient, 
+  getUserFromRequest, 
+  getOrCreateCraftsmanId,
+  handleApiError,
+  handleApiSuccess
+} from '../../../../lib/api-utils';
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
-  {
-    auth: { persistSession: false }
-  }
-);
-
-// Helper: authenticate request using Bearer token
-async function getUserFromRequest(req) {
-  const authHeader = req.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.replace('Bearer ', '')
-    : null;
-
-  if (!token) return null;
-  
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  
-  if (error) {
-    console.error('Supabase auth error', error.message);
-    return null;
-  }
-  return user;
-}
-
-// Helper: Get craftsman ID for the current user
-async function getCraftsmanId(user) {
-  if (!user) return null;
-  
-  // Try to find existing craftsman
-  const { data: craftsman, error } = await supabase
-    .from('craftsmen')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-  
-  if (error && error.code !== 'PGRST116') {
-    console.error('Error fetching craftsman:', error.message);
-    return null;
-  }
-  
-  return craftsman?.id || null;
-}
+// Create a standardized Supabase client for this route
+const ROUTE_NAME = 'Materials Confirmation API';
+const supabase = createSupabaseClient(ROUTE_NAME);
 
 // GET: Check if user has confirmed the materials notice
 export async function GET(req) {
   try {
-    const user = await getUserFromRequest(req);
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError(
+        { message: 'Unauthorized' },
+        'Unauthorized',
+        401,
+        ROUTE_NAME
+      );
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError(
+        { message: 'Craftsman profile not found' },
+        'Craftsman profile not found',
+        404,
+        ROUTE_NAME
+      );
     }
+
+    console.log(`${ROUTE_NAME} - Checking material confirmation status for craftsman: ${craftsmanId}`);
 
     // Check if confirmation exists
     const { data, error } = await supabase
@@ -71,33 +45,58 @@ export async function GET(req) {
       .single();
     
     if (error && error.code !== 'PGRST116') {
-      console.error('Error checking confirmation:', error.message);
-      throw error;
+      console.error(`${ROUTE_NAME} - Error checking confirmation:`, error);
+      return handleApiError(
+        error,
+        'Failed to check material confirmation status',
+        500,
+        ROUTE_NAME
+      );
     }
 
     // Return confirmation status and timestamp if exists
-    return Response.json({
+    const responseData = {
       confirmed: !!data,
       confirmed_at: data?.confirmed_at || null
-    });
+    };
+    
+    console.log(`${ROUTE_NAME} - Material confirmation status: ${responseData.confirmed}`);
+    return handleApiSuccess(
+      responseData,
+      responseData.confirmed ? 
+        'Materials terms have been confirmed' : 
+        'Materials terms have not been confirmed yet'
+    );
   } catch (err) {
-    console.error('GET /api/materials/confirmation error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - GET error:`, err);
+    return handleApiError(err, 'Server error', 500, ROUTE_NAME);
   }
 }
 
 // POST: Record user's confirmation of the materials notice
 export async function POST(req) {
   try {
-    const user = await getUserFromRequest(req);
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError(
+        { message: 'Unauthorized' },
+        'Unauthorized',
+        401,
+        ROUTE_NAME
+      );
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError(
+        { message: 'Craftsman profile not found' },
+        'Craftsman profile not found',
+        404,
+        ROUTE_NAME
+      );
     }
+
+    console.log(`${ROUTE_NAME} - Saving materials confirmation for craftsman: ${craftsmanId}`);
 
     // Insert confirmation record
     const { data, error } = await supabase
@@ -107,16 +106,28 @@ export async function POST(req) {
       .single();
     
     if (error) {
-      console.error('Error saving confirmation:', error.message);
-      throw error;
+      console.error(`${ROUTE_NAME} - Error saving confirmation:`, error);
+      return handleApiError(
+        error,
+        'Failed to save materials confirmation',
+        500,
+        ROUTE_NAME
+      );
     }
 
-    return Response.json({
+    const responseData = {
       confirmed: true,
       confirmed_at: data.confirmed_at
-    }, { status: 201 });
+    };
+
+    console.log(`${ROUTE_NAME} - Successfully recorded materials confirmation at ${data.confirmed_at}`);
+    return handleApiSuccess(
+      responseData,
+      'Materials terms have been successfully confirmed',
+      201
+    );
   } catch (err) {
-    console.error('POST /api/materials/confirmation error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - POST error:`, err);
+    return handleApiError(err, 'Server error', 500, ROUTE_NAME);
   }
 }

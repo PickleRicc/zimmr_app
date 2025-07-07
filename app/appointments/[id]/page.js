@@ -60,8 +60,20 @@ export default function AppointmentDetailPage() {
       console.log(`Fetching appointment with ID: ${id}`);
       const resA = await fetcherRef.current(`/api/appointments/${id}`);
       if(!resA.ok) throw new Error(`HTTP ${resA.status}`);
-      const appointmentData = await resA.json();
+      
+      // Handle standardized API response format
+      const response = await resA.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const appointmentData = response.data !== undefined ? response.data : response;
       console.log('Appointment data received:', appointmentData);
+      
+      // Display success message if available
+      if (response.message) {
+        console.log('API Message:', response.message);
+        setSuccess(response.message);
+      }
+      
       setAppointment(appointmentData);
 
       // Fetch customer details
@@ -70,7 +82,11 @@ export default function AppointmentDetailPage() {
           console.log(`Fetching customer with ID: ${appointmentData.customer_id}`);
           const resC = await fetcherRef.current(`/api/customers?id=${appointmentData.customer_id}`);
           if(resC.ok) {
-            const customerData = await resC.json();
+            // Handle standardized API response format
+            const customerResponse = await resC.json();
+            
+            // Extract data, supporting both new standardized and legacy formats
+            const customerData = customerResponse.data !== undefined ? customerResponse.data : customerResponse;
             console.log('Customer data received:', customerData);
             setCustomer(customerData);
           }
@@ -93,7 +109,7 @@ export default function AppointmentDetailPage() {
       if (err.response && err.response.status === 404) {
         setError('Der Termin wurde nicht gefunden. Es ist möglich, dass er gelöscht wurde oder Sie keine Berechtigung haben, ihn zu sehen.');
       } else {
-        setError('Fehler beim Laden des Termins. Bitte versuchen Sie es erneut.');
+        setError(err.message || 'Fehler beim Laden des Termins. Bitte versuchen Sie es erneut.');
       }
 
       setLoading(false);
@@ -191,6 +207,7 @@ export default function AppointmentDetailPage() {
 
     setProcessingAction('edit');
     setError('');
+    setSuccess('');
 
     try {
       const updateData = {
@@ -204,11 +221,26 @@ export default function AppointmentDetailPage() {
       };
 
       // Call the API to update the appointment
-      const result = await appointmentsAPI.update(id, updateData);
+      const res = await fetcherRef.current(`/api/appointments/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
 
-      // The backend returns the updated appointment directly
+      if (!res.ok) {
+        // Try to extract error message from standardized response
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${res.status}`);
+      }
+
+      // Parse response with standardized format
+      const response = await res.json();
+      
+      // Extract data supporting both standardized and legacy formats
+      const result = response.data !== undefined ? response.data : response;
+
+      // Update the appointment state with the result from the server
       if (result) {
-        // Update the appointment state with the result from the server
         setAppointment(result);
 
         // Update the notes state if it's being used elsewhere in the UI
@@ -216,12 +248,13 @@ export default function AppointmentDetailPage() {
           setNotes(result.notes);
         }
 
-        setSuccess('Der Termin wurde erfolgreich aktualisiert');
+        // Use the API's success message if available
+        setSuccess(response.message || 'Der Termin wurde erfolgreich aktualisiert');
         setShowEditModal(false);
       }
     } catch (err) {
       console.error('Error updating appointment:', err);
-      setError('Fehler beim Aktualisieren des Termins. Bitte versuchen Sie es erneut.');
+      setError(err.message || 'Fehler beim Aktualisieren des Termins. Bitte versuchen Sie es erneut.');
     } finally {
       setProcessingAction(null);
     }
@@ -237,26 +270,41 @@ export default function AppointmentDetailPage() {
 
       setProcessingAction('complete');
       setError('');
+      setSuccess('');
 
-      // Update appointment status to completed
-      await appointmentsAPI.complete(appointment.id, {
+      // Create update data
+      const completeData = {
         status: 'completed',
         price: servicePrice,
         notes: notes
+      };
+
+      // Call the API to complete appointment
+      const res = await fetcherRef.current(`/api/appointments/${appointment.id}/complete`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(completeData)
       });
 
-      setSuccess('Der Termin wurde erfolgreich abgeschlossen!');
+      if (!res.ok) {
+        // Try to extract error message from standardized response
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${res.status}`);
+      }
+
+      // Parse response with standardized format
+      const response = await res.json();
+      
+      // Use the API's success message if available
+      setSuccess(response.message || 'Der Termin wurde erfolgreich abgeschlossen!');
 
       // Redirect to the new invoice page with appointment data
       setTimeout(() => {
-        // Encode appointment data to pass to the new invoice page
+        // Prepare appointment data for invoice creation
         const appointmentData = {
           appointment_id: appointment.id,
           customer_id: appointment.customer_id,
-          craftsman_id: appointment.craftsman_id,
-          amount: servicePrice, // Pre-fill the amount with service price
-          location: appointment.location || '',
-          service_date: appointment.scheduled_at ? new Date(appointment.scheduled_at).toISOString().split('T')[0] : '',
+          price: servicePrice,
           notes: notes || appointment.notes || '',
           from_appointment: true
         };
@@ -269,7 +317,7 @@ export default function AppointmentDetailPage() {
       }, 1000);
     } catch (err) {
       console.error('Error completing appointment:', err);
-      setError('Fehler beim Abschließen des Termins. Bitte versuchen Sie es erneut.');
+      setError(err.message || 'Fehler beim Abschließen des Termins. Bitte versuchen Sie es erneut.');
     } finally {
       setProcessingAction(null);
       setShowCompleteModal(false);

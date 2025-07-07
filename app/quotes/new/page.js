@@ -124,12 +124,27 @@ export default function NewQuotePage() {
     try {
       setLoading(true);
       const response = await fetcher('/api/customers');
-      const data = await response.json();
-      console.log('Kunden geladen:', data);
-      setCustomers(data);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${response.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      console.log('Kunden geladen:', responseData);
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const customersData = responseData.data !== undefined ? responseData.data : responseData;
+      setCustomers(Array.isArray(customersData) ? customersData : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Customers API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Fehler beim Laden der Kunden:', err);
-      setError('Kunden konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
+      setError(err.message || 'Kunden konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
     } finally {
       setLoading(false);
     }
@@ -140,9 +155,24 @@ export default function NewQuotePage() {
       setLoadingAppointments(true);
       // Fetch all appointments for this craftsman without filtering by status or invoice association
       const response = await fetcher('/api/appointments');
-      const data = await response.json();
-      console.log('Termine geladen:', data);
-      setAppointments(data);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${response.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      console.log('Termine geladen:', responseData);
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const appointmentsData = responseData.data !== undefined ? responseData.data : responseData;
+      setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Fehler beim Laden der Termine:', err);
       // Non-critical error, don't set error state to avoid blocking quote creation
@@ -247,24 +277,56 @@ export default function NewQuotePage() {
     }));
   };
   
+  // Calculate the total price of all materials
+  const calculateMaterialsTotal = () => {
+    // Ensure materials is always an array
+    const materialsArray = Array.isArray(formData.materials) ? formData.materials : [];
+    
+    // Calculate the total materials price
+    const totalMaterialsPrice = materialsArray.reduce((sum, material) => {
+      const quantity = parseFloat(material.quantity) || 0;
+      const price = parseFloat(material.unit_price) || 0;
+      return sum + (quantity * price);
+    }, 0);
+    
+    return totalMaterialsPrice.toFixed(2);
+  };
+
   // Handle materials selection changes
   const handleMaterialsChange = (materials) => {
+    // Ensure materials is always an array
+    const materialsArray = Array.isArray(materials) ? materials : [];
+    
     // Calculate the total materials price
-    const totalMaterialsPrice = materials.reduce((sum, material) => {
-      return sum + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+    const totalMaterialsPrice = materialsArray.reduce((sum, material) => {
+      const quantity = parseFloat(material.quantity) || 0;
+      const price = parseFloat(material.unit_price) || 0;
+      const lineTotal = quantity * price;
+      console.log(`Material: ${material.name}, Qty: ${quantity}, Price: ${price}, Line Total: ${lineTotal}`);
+      return sum + lineTotal;
     }, 0);
+    
+    console.log('Materials array:', materialsArray);
+    console.log('Total materials price calculated:', totalMaterialsPrice);
     
     // Update the amount and tax calculation
     const amount = parseFloat(formData.amount) || 0;
     const tax = formData.vat_exempt ? 0 : amount * 0.19;
     const total = amount + tax + totalMaterialsPrice;
     
-    setFormData(prev => ({
-      ...prev,
-      materials,
-      total_materials_price: totalMaterialsPrice.toFixed(2),
-      total_amount: total.toFixed(2)
-    }));
+    console.log('Updating form data with materials total:', totalMaterialsPrice.toFixed(2));
+    
+    // Force a state update with the new materials and totals
+    setFormData(prev => {
+      const newState = {
+        ...prev,
+        materials: materialsArray,
+        total_materials_price: totalMaterialsPrice.toFixed(2),
+        total_amount: total.toFixed(2)
+      };
+      console.log('New form state:', newState);
+      return newState;
+    });
   };
 
   const handleAppointmentChange = (e) => {
@@ -370,13 +432,51 @@ export default function NewQuotePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      const quote = await response.json();
       
-      console.log('Angebot erfolgreich erstellt:', quote);
-      setCreatedQuote(quote);
+      if (!response.ok) {
+        // Try to extract error message from standardized response
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${response.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data and message from response
+      const quoteData = responseData.data !== undefined ? responseData.data : responseData;
+      const successMessage = responseData.message || 'Angebot erfolgreich erstellt';
+      
+      // Ensure materials is always an array before setting state
+      if (quoteData && !Array.isArray(quoteData.materials)) {
+        quoteData.materials = quoteData.materials || [];
+      }
+      
+      // Ensure total price includes materials price
+      if (quoteData) {
+        // Get materials price
+        const materials = Array.isArray(quoteData.materials) ? quoteData.materials : [];
+        const materialsPrice = parseFloat(quoteData.total_materials_price) || 
+          materials.reduce((sum, material) => {
+            return sum + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
+          }, 0);
+        
+        // Recalculate the total to ensure it includes materials
+        const baseAmount = parseFloat(quoteData.amount) || 0;
+        const taxAmount = parseFloat(quoteData.tax_amount) || 0;
+        const expectedTotal = baseAmount + taxAmount + materialsPrice;
+        
+        // If total doesn't include materials price, update it
+        const currentTotal = parseFloat(quoteData.total_amount) || 0;
+        if (Math.abs(currentTotal - expectedTotal) > 0.01) { // Allow for small rounding differences
+          console.log(`Adjusting total price to include materials: ${currentTotal} -> ${expectedTotal}`);
+          quoteData.total_amount = expectedTotal.toFixed(2);
+          quoteData.total_materials_price = materialsPrice.toFixed(2);
+        }
+      }
+      
+      console.log('Angebot erfolgreich erstellt:', quoteData);
+      console.log('API Message:', successMessage);
+      setCreatedQuote(quoteData);
       setSuccess(true);
       
       // Clear form data
@@ -752,9 +852,9 @@ export default function NewQuotePage() {
                   
                   {/* Materials Total */}
                   <div className="mt-4 flex justify-end">
-                    <div className="bg-[#1e3a5f] border border-white/10 rounded-xl px-6 py-3 inline-flex items-center">
-                      <span className="text-sm font-medium">Materials Total:</span>
-                      <span className="ml-4 text-lg font-semibold">€{parseFloat(formData.total_materials_price).toFixed(2)}</span>
+                    <div className="bg-[#ffcb00] border border-[#ffcb00]/50 rounded-xl px-6 py-3 inline-flex items-center">
+                      <span className="text-sm font-medium text-black">Materials Total:</span>
+                      <span className="ml-4 text-lg font-semibold text-black">€{calculateMaterialsTotal()}</span>
                     </div>
                   </div>
                 </div>

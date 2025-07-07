@@ -2,64 +2,71 @@
 // GET    /api/time-entries      – list entries for current craftsman
 // POST   /api/time-entries      – create a new entry
 
-import { createClient } from '@supabase/supabase-js';
+import { 
+  createSupabaseClient, 
+  getUserFromRequest, 
+  getOrCreateCraftsmanId,
+  handleApiError,
+  handleApiSuccess
+} from '../../../lib/api-utils';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  // Prefer service role key in server context, else fall back to anon key in dev
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
-  { auth: { persistSession: false } }
-);
+// Initialize Supabase client using shared utility
+const ROUTE_NAME = 'Time Entries API';
+const supabase = createSupabaseClient(ROUTE_NAME);
 
-async function getUserFromRequest(req) {
-  const auth = req.headers.get('authorization') || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!token) return null;
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  if (error) return null;
-  return user;
-}
-
-async function getOrCreateCraftsmanId(user) {
-  const { data: row } = await supabase.from('craftsmen').select('id').eq('user_id', user.id).single();
-  if (row) return row.id;
-  const { data: created, error: createErr } = await supabase
-    .from('craftsmen')
-    .insert({ user_id: user.id, name: user.user_metadata?.full_name || user.email })
-    .select('id')
-    .single();
-  if (createErr) throw createErr;
-  return created.id;
-}
+// Using shared utilities from api-utils.js for user authentication and craftsman ID retrieval
 
 export async function GET(req) {
+  console.log(`${ROUTE_NAME} - GET request received`);
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
-    const craftsmanId = await getOrCreateCraftsmanId(user);
+    // Authenticate request using shared utility
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
+    if (!user) {
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
+    }
+
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
+    if (!craftsmanId) {
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
+    }
+
+    console.log(`${ROUTE_NAME} - Fetching time entries for craftsman: ${craftsmanId}`);
     const { data, error } = await supabase
       .from('time_entries')
       .select('*')
       .eq('craftsman_id', craftsmanId)
       .order('start_time', { ascending: false });
-    if (error) throw error;
-    return Response.json(data);
+
+    if (error) {
+      console.error(`${ROUTE_NAME} - Error fetching time entries:`, error);
+      return handleApiError(`Error fetching time entries: ${error.message}`, 500, ROUTE_NAME);
+    }
+    
+    return handleApiSuccess(data || [], 'Time entries retrieved successfully');
   } catch (err) {
-    console.error('/api/time-entries GET error', err);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - GET error:`, err);
+    return handleApiError('Server error processing your request', 500, ROUTE_NAME);
   }
 }
 
 export async function POST(req) {
+  console.log(`${ROUTE_NAME} - POST request received`);
   try {
-    const user = await getUserFromRequest(req);
-    if (!user) return new Response('Unauthorized', { status: 401 });
-    const craftsmanId = await getOrCreateCraftsmanId(user);
+    // Authenticate request using shared utility
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
+    if (!user) {
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
+    }
+
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
+    if (!craftsmanId) {
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
+    }
 
     const body = await req.json();
+    console.log(`${ROUTE_NAME} - Processing time entry creation`);
 
     // Extract fields from request
     let {
@@ -84,7 +91,7 @@ export async function POST(req) {
     end_time = end_time === '' ? null : end_time;
 
     if (!start_time) {
-      return new Response('start_time is required', { status: 400 });
+      return handleApiError('start_time is required', 400, ROUTE_NAME);
     }
 
     // Enforce is_billable = true when customer_id present
@@ -121,10 +128,15 @@ export async function POST(req) {
       .insert(insertPayload)
       .select()
       .single();
-    if (error) throw error;
-    return Response.json(data, { status: 201 });
+
+    if (error) {
+      console.error(`${ROUTE_NAME} - Error creating time entry:`, error);
+      return handleApiError(`Error creating time entry: ${error.message}`, 500, ROUTE_NAME);
+    }
+    
+    return handleApiSuccess(data, 'Time entry created successfully', 201);
   } catch (err) {
-    console.error('/api/time-entries POST error', err);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - POST error:`, err);
+    return handleApiError('Server error processing your request', 500, ROUTE_NAME);
   }
 }

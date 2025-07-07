@@ -48,10 +48,26 @@ function InvoicePageContent() {
   const fetchQuoteData = async (quoteId) => {
     try {
       setLoading(true);
-      console.log(`Workspaceing quote ${quoteId} for pre-filling invoice`);
+      console.log(`Fetching quote ${quoteId} for pre-filling invoice`);
 
-      const quote = await quotesAPI.getById(quoteId);
+      const response = await authedFetch(`/api/quotes/${quoteId}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `Failed to fetch quote: ${response.statusText}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const quote = responseData.data !== undefined ? responseData.data : responseData;
       console.log('Quote data retrieved:', quote);
+      
+      // Display success message if available
+      if (responseData.message) {
+        console.log('API Message:', responseData.message);
+      }
 
       if (quote) {
         // Calculate default due date (14 days from now)
@@ -71,15 +87,14 @@ function InvoicePageContent() {
           service_date: quote.service_date || '',
           location: quote.location || '',
           vat_exempt: quote.vat_exempt || false,
+          materials: quote.materials || [],
+          total_materials_price: quote.total_materials_price || '0.00',
           type: 'invoice', // Always set type to invoice when creating from quote
         }));
-
-        // If the quote has a customer ID, make sure we have the customer data (already fetched in useEffect)
-        // No need to call fetchCustomers again here if it's already called in useEffect
       }
     } catch (err) {
       console.error(`Error fetching quote ${quoteId}:`, err);
-      setError(`Fehler beim Laden der Angebotsdaten. Bitte versuchen Sie es später erneut.`);
+      setError(err.message || `Fehler beim Laden der Angebotsdaten. Bitte versuchen Sie es später erneut.`);
     } finally {
       setLoading(false);
     }
@@ -139,17 +154,27 @@ function InvoicePageContent() {
 
   const fetchCustomers = async () => {
     try {
-      setLoading(true); // Use general loading for initial customer fetch
-      console.log('Fetching customers');
-      const res = await authedFetch('/api/customers');
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      console.log('Fetched customers:', data);
-      setCustomers(data || []); // Ensure customers is always an array
+      setLoading(true);
+      const response = await authedFetch('/api/customers');
+      if (!response.ok && response.status !== 404) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP ${response.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = response.status === 404 ? { data: [] } : await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      setCustomers(Array.isArray(data) ? data : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Customers API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching customers:', err);
-      setError('Fehler beim Laden der Kunden. Bitte versuchen Sie es später erneut.');
-      setCustomers([]); // Set to empty array on error
+      setError(err.message || 'Fehler beim Laden der Kundendaten');
     } finally {
       setLoading(false);
     }
@@ -159,11 +184,25 @@ function InvoicePageContent() {
     try {
       setLoadingAppointments(true);
       console.log('Fetching appointments');
-      const res = await authedFetch('/api/appointments?status=completed&has_invoice=false');
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const response = await authedFetch('/api/appointments?status=completed&has_invoice=false');
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP ${response.status}`);
+      }
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
       console.log('Fetched appointments:', data);
-      setAppointments(data || []); // Ensure appointments is always an array
+      setAppointments(Array.isArray(data) ? data : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Appointments API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching appointments:', err);
       // Don't set the main error here to avoid overriding customer/quote fetch errors
@@ -216,13 +255,17 @@ function InvoicePageContent() {
     return data;
   };
 
-  // Calculate total price of materials
-  const calculateMaterialsTotal = (materials = []) => {
-    console.log('====== CALCULATING MATERIALS TOTAL ======');
-    console.log('Materials array received:', materials);
-    console.log('Materials count:', materials.length);
+  // Calculate the total price of all materials currently in the form
+  const calculateMaterialsTotal = () => {
+    // Ensure materials is always an array
+    const materialsArray = Array.isArray(formData.materials) ? formData.materials : [];
     
-    const total = materials.reduce((sum, material) => {
+    console.log('====== CALCULATING MATERIALS TOTAL ======');
+    console.log('Materials array in form:', materialsArray);
+    console.log('Materials count:', materialsArray.length);
+    
+    // Calculate the total materials price
+    const total = materialsArray.reduce((sum, material) => {
       const quantity = parseFloat(material.quantity) || 0;
       const unitPrice = parseFloat(material.unit_price) || 0;
       const itemTotal = quantity * unitPrice;
@@ -240,14 +283,30 @@ function InvoicePageContent() {
     console.log('====== MATERIALS SELECTION CHANGED ======');
     console.log('New materials selected:', materials);
     
-    const total_materials_price = calculateMaterialsTotal(materials);
+    // Ensure materials is always an array
+    const materialsArray = Array.isArray(materials) ? materials : [];
     
+    // Calculate the total materials price
+    const totalMaterialsPrice = materialsArray.reduce((sum, material) => {
+      const quantity = parseFloat(material.quantity) || 0;
+      const price = parseFloat(material.unit_price) || 0;
+      const lineTotal = quantity * price;
+      console.log(`Material: ${material.name}, Qty: ${quantity}, Price: ${price}, Line Total: ${lineTotal}`);
+      return sum + lineTotal;
+    }, 0);
+    
+    console.log('Materials array:', materialsArray);
+    console.log('Total materials price calculated:', totalMaterialsPrice);
+    
+    // Format the total for display
+    const total_materials_price = totalMaterialsPrice.toFixed(2);
     console.log('Setting total_materials_price:', total_materials_price);
     
+    // Force a state update with the new materials and totals
     setFormData(prev => {
       const updatedData = {
         ...prev,
-        materials,
+        materials: materialsArray,
         total_materials_price
       };
       
@@ -365,31 +424,57 @@ function InvoicePageContent() {
 
       // Choose API based on type
       let result;
+      let apiMessage;
+
       if (formData.type === 'quote') {
-          console.log('Creating Quote');
-          result = await quotesAPI.create(invoiceData); // Assuming quotesAPI has a create method
-          console.log('Quote created:', result);
+        console.log('Creating Quote');
+        // Note: This API call might need to be updated separately
+        // to handle standardized responses from quotesAPI
+        result = await quotesAPI.create(invoiceData);
+        console.log('Quote created:', result);
       } else {
-          console.log('Creating Invoice/Draft');
-          const res = await authedFetch('/api/invoices', {
+        console.log('Creating Invoice/Draft');
+        const response = await authedFetch('/api/invoices', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(invoiceData)
         });
-        if (!res.ok) throw new Error(await res.text());
-        result = await res.json();
-          console.log('Invoice/Draft created:', result);
-      }
 
+        if (!response.ok) {
+          // Try to extract error message from standardized response
+          const errorData = await response.json().catch(() => null);
+          throw new Error(errorData?.message || `HTTP Error ${response.status}`);
+        }
+
+        // Handle standardized API response format
+        const responseData = await response.json();
+        
+        // Extract data and message from the response
+        result = responseData.data !== undefined ? responseData.data : responseData;
+        apiMessage = responseData.message;
+        
+        console.log('Invoice/Draft created:', result);
+        if (apiMessage) {
+          console.log('API Success Message:', apiMessage);
+        }
+      }
 
       setSuccess(true);
       setCreatedInvoice(result); // Store the created invoice/quote object
+      
+      // Set success message if available from API
+      if (apiMessage) {
+        setError(null); // Clear any previous errors
+        // You could display the API message in the UI here if desired
+      }
 
       // Don't redirect immediately to allow PDF generation or viewing message
 
     } catch (err) {
       console.error(`Error creating ${formData.type}:`, err);
-      const errorMsg = err.response?.data?.error || `Fehler beim Erstellen: ${err.message}`;
+      // Use the error message from the standardized API response if available
+      // Otherwise fall back to other error information
+      const errorMsg = err.message || `Fehler beim Erstellen des ${formData.type === 'quote' ? 'Angebots' : 'Rechnung'}`;
       setError(errorMsg);
       setSuccess(false); // Ensure success is false on error
     } finally {
@@ -888,14 +973,13 @@ function InvoicePageContent() {
                       selectedMaterials={formData.materials}
                       onChange={handleMaterialsChange}
                     />
-                    {/* Show materials price in the UI */}
-                    {parseFloat(formData.total_materials_price) > 0 && (
-                      <div className="mt-2 text-right">
-                        <span className="text-sm font-medium text-gray-300">
-                          Materialkosten: €{parseFloat(formData.total_materials_price).toFixed(2)}
-                        </span>
+                    {/* Materials Total */}
+                    <div className="mt-4 flex justify-end">
+                      <div className="bg-[#ffcb00] border border-[#ffcb00]/50 rounded-xl px-6 py-3 inline-flex items-center">
+                        <span className="text-sm font-medium text-black">Materialkosten:</span>
+                        <span className="ml-4 text-lg font-semibold text-black">€{calculateMaterialsTotal()}</span>
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Notes */}

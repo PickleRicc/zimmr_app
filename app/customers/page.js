@@ -37,7 +37,9 @@ export default function CustomersPage() {
       try {
         const res = await fetcherRef.current('/api/customers');
         if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-        const data = res.status === 404 ? [] : await res.json();
+        const responseJson = await res.json();
+        // Handle new standardized API response format
+        const data = responseJson.data || (res.status === 404 ? [] : responseJson);
         console.log(`Customers page - Fetched ${data.length} customers`);
         setCustomers(data);
         setSuccess(''); // reset any prior success

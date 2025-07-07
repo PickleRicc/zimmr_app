@@ -60,8 +60,18 @@ export default function InvoiceDetailPage({ params }) {
       if (!response.ok) {
         throw new Error(`Failed to fetch invoice: ${response.statusText}`);
       }
-      const data = await response.json();
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
       console.log('Fetched invoice:', data);
+      
+      // Display success message if available
+      if (responseData.message) {
+        console.log('API Message:', responseData.message);
+      }
       
       // DEBUGGING: Log materials information when invoice is fetched
       console.log('========= MATERIALS DATA DEBUG (Invoice Fetch) =========');
@@ -124,25 +134,45 @@ export default function InvoiceDetailPage({ params }) {
       if (!response.ok) {
         throw new Error(`Failed to fetch appointment: ${response.statusText}`);
       }
-      const data = await response.json();
+      
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
       setAppointment(data);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Appointment API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching appointment:', err);
-      // Don't set error here
+      // Don't set error here to avoid overriding invoice fetch errors
     }
   };
 
   const fetchCustomers = async () => {
     try {
       const response = await authedFetch('/api/customers');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch customers: ${response.statusText}`);
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`HTTP ${response.status}`);
       }
-      const data = await response.json();
-      setCustomers(data);
-    } catch (err) {
-      console.error('Error fetching customers:', err);
-      // Don't set error here to avoid overriding invoice fetch errors
+      
+      // Handle standardized API response format
+      const responseData = response.status === 404 ? { data: [] } : await response.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      setCustomers(Array.isArray(data) ? data : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Customers API Message:', responseData.message);
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      setError('Failed to load customers');
     }
   };
 
@@ -214,11 +244,22 @@ export default function InvoiceDetailPage({ params }) {
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to update invoice: ${response.statusText}`);
+        // Try to extract error message from standardized response
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || `Failed to update invoice: ${response.statusText}`);
       }
       
-      const result = await response.json();
+      // Handle standardized API response format
+      const responseData = await response.json();
+      
+      // Extract data, supporting both standardized and legacy formats
+      const result = responseData.data !== undefined ? responseData.data : responseData;
       console.log('Invoice updated:', result);
+      
+      // Display success message if available
+      if (responseData.message) {
+        console.log('API Success Message:', responseData.message);
+      }
       
       setInvoice(result);
       setSuccess(true);

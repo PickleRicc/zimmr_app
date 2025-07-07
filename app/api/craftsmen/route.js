@@ -1,43 +1,45 @@
 // GET handler returns the craftsman row that matches the logged-in Supabase user.
 // Auth via bearer token (Next.js App Router – server component)
 
-import { createClient } from '@supabase/supabase-js';
+import { 
+  createSupabaseClient, 
+  getUserFromRequest, 
+  handleApiError,
+  handleApiSuccess 
+} from '../../../lib/api-utils';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
-  { auth: { persistSession: false } }
-);
-
-async function getUser(req) {
-  const authHeader = req.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) return null;
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  if (error) {
-    console.error('supabase auth error', error.message);
-    return null;
-  }
-  return user;
-}
+// Initialize Supabase client using shared utility
+const ROUTE_NAME = 'Craftsmen API';
+const supabase = createSupabaseClient(ROUTE_NAME);
 
 export async function GET(req) {
-  const user = await getUser(req);
-  if (!user) return new Response('Unauthorized', { status: 401 });
+  console.log(`${ROUTE_NAME} - GET request received`);
+  try {
+    // Authenticate request using shared utility
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
+    if (!user) {
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
+    }
 
-  const { data, error } = await supabase
-    .from('craftsmen')
-    .select('*')
-    .eq('user_id', user.id)
-    .single();
+    console.log(`${ROUTE_NAME} - Fetching craftsman profile for user: ${user.id}`);
+    const { data, error } = await supabase
+      .from('craftsmen')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
 
-  if (error) {
-    console.error('/api/craftsmen GET error', error.message);
-    return new Response(error.message, { status: 500 });
+    if (error) {
+      console.error(`${ROUTE_NAME} - Error fetching craftsman:`, error.message);
+      return handleApiError(`Error fetching craftsman profile: ${error.message}`, 500, ROUTE_NAME);
+    }
+    
+    if (!data) {
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
+    }
+    
+    return handleApiSuccess(data, 'Craftsman profile retrieved successfully');
+  } catch (err) {
+    console.error(`${ROUTE_NAME} - GET error:`, err.message);
+    return handleApiError('Server error processing your request', 500, ROUTE_NAME);
   }
-  if (!data) return new Response('Not found', { status: 404 });
-  return Response.json(data);
 }

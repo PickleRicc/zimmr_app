@@ -34,8 +34,18 @@ export default function NewAppointmentPage() {
       try {
         const res = await fetcherRef.current('/api/customers');
         if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-        const data = res.status === 404 ? [] : await res.json();
-        setCustomers(Array.isArray(data) ? data : []);
+        
+        // Handle standardized API response format
+        const response = res.status === 404 ? { data: [] } : await res.json();
+        
+        // Extract data, supporting both new standardized and legacy formats
+        const customerData = response.data !== undefined ? response.data : response;
+        setCustomers(Array.isArray(customerData) ? customerData : []);
+        
+        // Display success message if available
+        if (response.message) {
+          console.log('API Message:', response.message);
+        }
       } catch (e) {
         console.error('load customers', e);
         setError('Fehler beim Laden der Kunden.');
@@ -70,12 +80,32 @@ export default function NewAppointmentPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSuccess('Termin erstellt!');
+      
+      if (!res.ok) {
+        // Try to parse error response if available in standardized format
+        try {
+          const errorResponse = await res.json();
+          if (errorResponse.message) {
+            throw new Error(errorResponse.message);
+          } else {
+            throw new Error(`HTTP ${res.status}`);
+          }
+        } catch (parseError) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      }
+      
+      // Parse successful response
+      const response = await res.json();
+      
+      // Use message from API response if available, otherwise use default message
+      setSuccess(response.message || 'Termin erstellt!');
+      
+      // Navigate after delay
       setTimeout(() => router.push('/appointments'), 1500);
     } catch (e) {
       console.error('create appointment', e);
-      setError('Fehler beim Erstellen des Termins.');
+      setError(e.message || 'Fehler beim Erstellen des Termins.');
     } finally {
       setSaving(false);
     }

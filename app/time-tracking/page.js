@@ -95,14 +95,25 @@ export default function TimeTrackingPage() {
       const res = await authedFetch('/api/time-entries');
       
       if (!res.ok) {
-        throw new Error('Failed to fetch time entries');
+        // Try to extract error message from standardized response
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to fetch time entries');
       }
       
-      const data = await res.json();
-      setTimeEntries(data);
+      // Handle standardized API response format
+      const responseData = await res.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      setTimeEntries(Array.isArray(data) ? data : []);
+      
+      // Display success message if available
+      if (responseData.message) {
+        console.log('Time Entries API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching time entries:', err);
-      setError('Failed to load time entries. Please try again.');
+      setError(err.message || 'Failed to load time entries. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -114,12 +125,22 @@ export default function TimeTrackingPage() {
       const res = await authedFetch('/api/customers');
       
       if (!res.ok) {
-        console.error('Failed to fetch customers');
+        const errorData = await res.json().catch(() => null);
+        console.error('Failed to fetch customers:', errorData?.message || res.statusText);
         return;
       }
       
-      const data = await res.json();
-      setCustomers(data);
+      // Handle standardized API response format
+      const responseData = await res.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      setCustomers(Array.isArray(data) ? data : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Customers API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching customers:', err);
     }
@@ -131,12 +152,22 @@ export default function TimeTrackingPage() {
       const res = await authedFetch('/api/appointments');
       
       if (!res.ok) {
-        console.error('Failed to fetch appointments');
+        const errorData = await res.json().catch(() => null);
+        console.error('Failed to fetch appointments:', errorData?.message || res.statusText);
         return;
       }
       
-      const data = await res.json();
-      setAppointments(data);
+      // Handle standardized API response format
+      const responseData = await res.json();
+      
+      // Extract data, supporting both new standardized and legacy formats
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      setAppointments(Array.isArray(data) ? data : []);
+      
+      // Log any API message
+      if (responseData.message) {
+        console.log('Appointments API Message:', responseData.message);
+      }
     } catch (err) {
       console.error('Error fetching appointments:', err);
     }
@@ -228,16 +259,28 @@ export default function TimeTrackingPage() {
       });
       
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(errorText || 'Failed to save time entry');
+        // Try to extract error message from standardized response
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.message || `HTTP Error ${res.status}`);
       }
       
-      // Get the new entry from response
-      const savedEntry = await res.json();
+      // Handle standardized API response format
+      const responseData = await res.json();
+      
+      // Extract data and message from the response
+      const savedEntry = responseData.data !== undefined ? responseData.data : responseData;
+      const apiMessage = responseData.message;
       
       // Update state with optimistic update
       setTimeEntries(prev => [savedEntry, ...prev]);
-      setSuccess('Time entry saved!');
+      
+      // Use API success message if available
+      if (apiMessage) {
+        console.log('API Success Message:', apiMessage);
+        setSuccess(apiMessage);
+      } else {
+        setSuccess('Time entry saved!');
+      }
       
       // Close modal and reset form
       setShowAddModal(false);

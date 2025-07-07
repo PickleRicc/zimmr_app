@@ -1,65 +1,35 @@
 // API route for materials CRUD using Supabase
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
+import {
+  createSupabaseClient,
+  getUserFromRequest,
+  getOrCreateCraftsmanId,
+  handleApiError,
+  handleApiSuccess,
+  camelToSnake as convertKeysToSnakeCase
+} from '../../../lib/api-utils';
 
-// Initialize Supabase client for server-side use
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY,
-  {
-    auth: { persistSession: false }
-  }
-);
+// Define route name for consistent logging
+const ROUTE_NAME = 'Materials API';
 
-// Helper: authenticate request using Bearer token
-async function getUserFromRequest(req) {
-  const authHeader = req.headers.get('authorization') || '';
-  const token = authHeader.startsWith('Bearer ')
-    ? authHeader.replace('Bearer ', '')
-    : null;
+// Initialize Supabase client using shared utility with route name for better logging
+const supabase = createSupabaseClient(ROUTE_NAME);
 
-  if (!token) return null;
-  
-  const {
-    data: { user },
-    error
-  } = await supabase.auth.getUser(token);
-  
-  if (error) {
-    console.error('Supabase auth error', error.message);
-    return null;
-  }
-  return user;
-}
-
-// Helper: Get craftsman ID for the current user
-async function getCraftsmanId(user) {
-  if (!user) return null;
-  
-  // Try to find existing craftsman
-  const { data: craftsman, error } = await supabase
-    .from('craftsmen')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-  
-  if (error && error.code !== 'PGRST116') {
-    console.error('Error fetching craftsman:', error.message);
-    return null;
-  }
-  
-  return craftsman?.id || null;
-}
+console.log(`${ROUTE_NAME} - Using shared Supabase client`);
 
 export async function GET(req) {
+  console.log(`${ROUTE_NAME} - GET request received`);
   try {
-    const user = await getUserFromRequest(req);
+    // Authenticate request
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
     }
 
     const { searchParams } = new URL(req.url);
@@ -75,11 +45,11 @@ export async function GET(req) {
         .single();
 
       if (error) {
-        console.error('Material fetch error:', error.message);
-        return new Response('Not found', { status: 404 });
+        console.error(`${ROUTE_NAME} - Material fetch error:`, error.message);
+        return handleApiError('Material not found', 404, ROUTE_NAME);
       }
 
-      return Response.json(data);
+      return handleApiSuccess(data, 'Material retrieved successfully', 200, ROUTE_NAME);
     }
 
     // List materials - combines default materials and craftsman's custom materials
@@ -90,34 +60,37 @@ export async function GET(req) {
       .order('name');
 
     if (error) {
-      console.error('Materials list error:', error.message);
-      throw error;
+      console.error(`${ROUTE_NAME} - Materials list error:`, error.message);
+      return handleApiError(`Error fetching materials: ${error.message}`, 500, ROUTE_NAME);
     }
 
-    return Response.json(data || []);
+    return handleApiSuccess(data || [], 'Materials retrieved successfully', 200, ROUTE_NAME);
   } catch (err) {
-    console.error('GET /api/materials error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - GET error:`, err.message);
+    return handleApiError('Server error processing your request', 500, ROUTE_NAME);
   }
 }
 
 export async function POST(req) {
+  console.log(`${ROUTE_NAME} - POST request received`);
   try {
-    const user = await getUserFromRequest(req);
+    // Authenticate request
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
     }
 
     const body = await req.json();
 
-    // Ensure required fields
+    // Validate required fields
     if (!body.name || !body.unit) {
-      return new Response('Name and unit are required', { status: 400 });
+      return handleApiError('Name and unit are required fields', 400, ROUTE_NAME);
     }
 
     // Set the craftsman ID to the current user's craftsman
@@ -135,32 +108,35 @@ export async function POST(req) {
       .single();
 
     if (error) {
-      console.error('Material creation error:', error.message);
-      throw error;
+      console.error(`${ROUTE_NAME} - Material creation error:`, error.message);
+      return handleApiError(`Error creating material: ${error.message}`, 500, ROUTE_NAME);
     }
 
-    return Response.json(data, { status: 201 });
+    return handleApiSuccess(data, 'Material created successfully', 201, ROUTE_NAME);
   } catch (err) {
-    console.error('POST /api/materials error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error(`${ROUTE_NAME} - POST error:`, err.message);
+    return handleApiError('Server error processing your request', 500, ROUTE_NAME);
   }
 }
 
 export async function PUT(req) {
+  console.log(`${ROUTE_NAME} - PUT request received`);
   try {
-    const user = await getUserFromRequest(req);
+    // Authenticate request
+    const user = await getUserFromRequest(req, supabase, ROUTE_NAME);
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError('Unauthorized', 401, ROUTE_NAME);
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
     }
 
     const body = await req.json();
     if (!body.id) {
-      return new Response('ID is required', { status: 400 });
+      return handleApiError('Material ID is required', 400, ROUTE_NAME);
     }
 
     // Check if this is a default material that needs to be cloned
@@ -171,8 +147,8 @@ export async function PUT(req) {
       .single();
 
     if (fetchError) {
-      console.error('Material fetch error:', fetchError.message);
-      return new Response('Material not found', { status: 404 });
+      console.error('Materials API - Material fetch error:', fetchError.message);
+      return handleApiError('Material not found', 404);
     }
 
     if (existingMaterial.is_default) {
@@ -193,11 +169,11 @@ export async function PUT(req) {
         .single();
 
       if (insertError) {
-        console.error('Material clone error:', insertError.message);
-        throw insertError;
+        console.error('Materials API - Material clone error:', insertError.message);
+        return handleApiError(`Error creating custom material: ${insertError.message}`, 500);
       }
 
-      return Response.json(customMaterial);
+      return handleApiSuccess(customMaterial, 'Custom material created from default template');
     } else {
       // For custom materials, update directly
       const { id, ...updatePayload } = body;
@@ -220,34 +196,37 @@ export async function PUT(req) {
         .single();
 
       if (error) {
-        console.error('Material update error:', error.message);
-        throw error;
+        console.error('Materials API - Material update error:', error.message);
+        return handleApiError(`Error updating material: ${error.message}`, 500);
       }
 
-      return Response.json(data);
+      return handleApiSuccess(data, 'Material updated successfully');
     }
   } catch (err) {
-    console.error('PUT /api/materials error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error('Materials API - PUT error:', err.message);
+    return handleApiError('Server error processing your request', 500);
   }
 }
 
 export async function DELETE(req) {
+  console.log('Materials API - DELETE request received');
   try {
-    const user = await getUserFromRequest(req);
+    // Authenticate request
+    const user = await getUserFromRequest(req, supabase, 'Materials API');
     if (!user) {
-      return new Response('Unauthorized', { status: 401 });
+      return handleApiError('Unauthorized', 401);
     }
 
-    const craftsmanId = await getCraftsmanId(user);
+    // Get craftsman ID using shared utility
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
-      return new Response('Craftsman not found for user', { status: 404 });
+      return handleApiError('Craftsman profile not found', 404);
     }
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) {
-      return new Response('ID query parameter is required', { status: 400 });
+      return handleApiError('Material ID is required', 400);
     }
 
     // First check if this is a default material
@@ -258,30 +237,34 @@ export async function DELETE(req) {
       .single();
 
     if (checkError) {
-      console.error('Material check error:', checkError.message);
-      return new Response('Material not found', { status: 404 });
+      console.error('Materials API - Material check error:', checkError.message);
+      return handleApiError('Material not found', 404);
     }
 
     if (data.is_default) {
-      return new Response('Cannot delete default materials', { status: 403 });
+      return handleApiError('Cannot delete default materials', 403);
     }
 
     // Delete only if it belongs to this craftsman and is not a default material
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('materials')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', id)
       .eq('craftsman_id', craftsmanId)
       .eq('is_default', false);
 
     if (error) {
-      console.error('Material deletion error:', error.message);
-      throw error;
+      console.error('Materials API - Material deletion error:', error.message);
+      return handleApiError(`Error deleting material: ${error.message}`, 500);
+    }
+    
+    if (count === 0) {
+      return handleApiError('Material not found or does not belong to this craftsman', 404);
     }
 
-    return new Response(null, { status: 204 });
+    return handleApiSuccess(null, 'Material deleted successfully', 200);
   } catch (err) {
-    console.error('DELETE /api/materials error', err.message);
-    return new Response(err.message || 'Server error', { status: 500 });
+    console.error('Materials API - DELETE error:', err.message);
+    return handleApiError('Server error processing your request', 500);
   }
 }
