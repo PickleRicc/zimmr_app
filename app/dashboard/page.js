@@ -28,6 +28,13 @@ export default function Home() {
     try {
       setFinanceLoading(true);
       console.log('Dashboard: Fetching finance stats...');
+      
+      // Make sure we have a user session before trying to get finance stats
+      if (!user) {
+        console.log('Dashboard: No user session available, skipping finance stats fetch');
+        return;
+      }
+      
       const stats = await getFinanceStats();
       console.log('Dashboard: Finance stats received:', stats);
       console.log('Dashboard: Monthly paid data:', stats?.monthly?.paid);
