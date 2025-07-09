@@ -5,7 +5,9 @@ import { useAuthedFetch } from '../../lib/utils/useAuthedFetch';
 import Link from 'next/link';
 import NextAppointment from '../components/NextAppointment';
 import FinanceCard from './FinanceCard';
+import RevenueChart from '../components/RevenueChart';
 import { useAuth } from '../../contexts/AuthContext';
+import { getFinanceStats } from '../../lib/finances-client';
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
@@ -14,10 +16,30 @@ export default function Home() {
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [customerCount] = useState(0);
   const [invoiceCount] = useState(0);
+  const [financeStats, setFinanceStats] = useState(null);
+  const [financeLoading, setFinanceLoading] = useState(true);
 
   // Use the AuthContext to get user data
   const { user, loading: authLoading } = useAuth();
   const fetcher = useAuthedFetch();
+
+  // Function to fetch finance stats
+  const loadFinanceStats = async () => {
+    try {
+      setFinanceLoading(true);
+      console.log('Dashboard: Fetching finance stats...');
+      const stats = await getFinanceStats();
+      console.log('Dashboard: Finance stats received:', stats);
+      console.log('Dashboard: Monthly paid data:', stats?.monthly?.paid);
+      console.log('Dashboard: Monthly open data:', stats?.monthly?.open);
+      console.log('Dashboard: Goal amount:', stats?.goal?.goal_amount);
+      setFinanceStats(stats);
+    } catch (err) {
+      console.error('Dashboard: Error fetching finance stats:', err);
+    } finally {
+      setFinanceLoading(false);
+    }
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -35,6 +57,7 @@ export default function Home() {
       
       try {
         fetchCraftsmanData();
+        loadFinanceStats(); // Load finance stats
       } catch (error) {
         console.error('Error getting craftsman ID:', error);
         setError('Fehler bei der Benutzerauthentifizierung. Bitte versuchen Sie es später erneut.');
@@ -205,21 +228,92 @@ export default function Home() {
         ) : (
           <>
             <div className="mb-8 animate-fade-in">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-                <div>
-                  <h1 className="text-3xl font-bold mb-2">
-                    <span className="bg-gradient-to-r from-[#ffcb00] to-[#e6b800] bg-clip-text text-transparent">
-                      {/* Try multiple sources for the user name */}
-                      {`Willkommen${getUserName()}`}
-                    </span>
-                  </h1>
-                  <p className="text-white/70">
-                    {craftsman ? `Fliesenleger` : 'Handwerker-Dashboard'}
-                  </p>
-                  {/* Next Appointment Section */}
-                  <div className="mt-8">
-                    <NextAppointment appointment={upcomingAppointments && upcomingAppointments.length > 0 ? upcomingAppointments[0] : null} />
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold mb-2">
+                  <span className="bg-gradient-to-r from-[#ffcb00] to-[#e6b800] bg-clip-text text-transparent">
+                    {/* Try multiple sources for the user name */}
+                    {`Willkommen${getUserName()}`}
+                  </span>
+                </h1>
+                <p className="text-white/70 mb-6">
+                  {craftsman ? `Fliesenleger` : 'Handwerker-Dashboard'}
+                </p>
+              </div>
+
+              {/* Two-column layout for appointment and finance chart */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                {/* Next Appointment Section - 1/3 width on large screens */}
+                <div className="lg:col-span-1">
+                  <NextAppointment appointment={upcomingAppointments && upcomingAppointments.length > 0 ? upcomingAppointments[0] : null} />
+                </div>
+                
+                {/* Finance Chart Section - 2/3 width on large screens */}
+                <div className="lg:col-span-2 bg-white/5 backdrop-blur-xl rounded-xl p-6 border border-white/10">
+                <div className="flex items-center mb-4">
+                  <div className="p-3 bg-[#ffcb00]/20 rounded-full mr-4">
+                    <svg className="w-6 h-6 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
                   </div>
+                  <h2 className="text-xl font-semibold text-white">Jahresumsatz</h2>
+                  <Link href="/finances" className="ml-auto text-[#ffcb00] hover:underline flex items-center text-sm">
+                    Details anzeigen
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                  </Link>
+                </div>
+                
+                {financeLoading ? (
+                  <div className="flex justify-center py-10">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#ffcb00]"></div>
+                  </div>
+                ) : financeStats ? (
+                  <div>
+                    {/* Chart container with height matching appointment card */}
+                    <div className="h-72 mb-8" style={{ position: 'relative' }}>
+                      <RevenueChart 
+                        monthlyPaid={financeStats.monthly?.paid || []} 
+                        monthlyOpen={financeStats.monthly?.open || []} 
+                        yearlyGoal={financeStats.goal?.goal_amount || null} 
+                      />
+                    </div>
+                    
+                    {/* Manual legend to ensure visibility */}
+                    <div className="flex items-center justify-center gap-6 mb-6">
+                      <div className="flex items-center">
+                        <span className="inline-block w-3 h-3 mr-2 bg-green-500 rounded-full"></span>
+                        <span className="text-white text-sm">Bezahlt</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="inline-block w-3 h-3 mr-2 bg-yellow-500 rounded-full"></span>
+                        <span className="text-white text-sm">Ausstehend</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-between mt-8 gap-4">
+                      <div className="bg-white/5 rounded-lg p-4">
+                        <span className="text-white/70 text-sm">Bezahlt</span>
+                        <p className="text-lg font-medium text-green-500">€{Number(financeStats.totalRevenue || 0).toLocaleString('de-DE')}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4">
+                        <span className="text-white/70 text-sm">Ausstehend</span>
+                        <p className="text-lg font-medium text-yellow-500">€{Number(financeStats.totalOpen || 0).toLocaleString('de-DE')}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4">
+                        <span className="text-white/70 text-sm">Jahresziel</span>
+                        <p className="text-lg font-medium text-white">
+                          {financeStats.goal ? 
+                            `€${Number(financeStats.goal.goal_amount).toLocaleString('de-DE')}` : 
+                            'Kein Ziel festgelegt'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-10 text-white/70">
+                    Keine Finanzdaten verfügbar. <Link href="/finances" className="text-[#ffcb00] hover:underline">Finanzen verwalten</Link>
+                  </div>
+                )}
                 </div>
               </div>
               

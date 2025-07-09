@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
+import RevenueChart from '../components/RevenueChart';
+import { getFinanceStats, setFinanceGoal } from '../../lib/finances-client';
 import Footer from '../components/Footer';
 
 const PERIODS = [
@@ -15,6 +17,7 @@ const formatMonth = (dateString) => {
 };
 
 export default function FinancesPage() {
+  // Only yearly view for now – period switch retained for future extensions
   const [period, setPeriod] = useState('year');
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,9 +27,14 @@ export default function FinancesPage() {
 
   useEffect(() => {
     setLoading(true);
-    getFinanceStats(period)
+    console.log('Finance Page: Fetching stats...');
+    getFinanceStats()
       .then(data => {
+        console.log('Finance Page: Stats received:', data);
+        console.log('Finance Page: Goal data:', data?.goal);
+        
         if (!data || !data.goal) {
+          console.log('Finance Page: No goal found or goal is null');
           setStats({
             ...data,
             goal: null
@@ -34,12 +42,28 @@ export default function FinancesPage() {
           setGoalInput('');
           setError('Noch kein Finanzziel festgelegt. Bitte fügen Sie unten Ihr Umsatzziel hinzu.');
         } else {
-          setStats(data);
-          setGoalInput(data.goal.goal_amount || '');
+          console.log('Finance Page: Goal amount:', data.goal.goal_amount);
+          // Ensure we're working with a valid goal amount
+          const goalAmount = parseFloat(data.goal.goal_amount) || 0;
+          console.log('Finance Page: Parsed goal amount:', goalAmount);
+          
+          // Set the data with properly formatted goal
+          setStats({
+            ...data,
+            goal: {
+              ...data.goal,
+              goal_amount: goalAmount
+            }
+          });
+          
+          setGoalInput(goalAmount);
           setError('');
         }
       })
-      .catch(() => setError('Finanzstatistiken konnten nicht geladen werden'))
+      .catch(err => {
+        console.error('Finance Page: Error fetching stats:', err);
+        setError('Finanzstatistiken konnten nicht geladen werden');
+      })
       .finally(() => setLoading(false));
   }, [period]);
 
@@ -50,14 +74,34 @@ export default function FinancesPage() {
     }
     setLoading(true);
     try {
-      await setFinanceGoal(goalInput, period);
+      console.log('Finance Page: Saving goal:', goalInput);
+      const saveResponse = await setFinanceGoal(goalInput);
+      console.log('Finance Page: Goal save response:', saveResponse);
       setEditing(false);
       setError('');
+      
       // Refresh stats
-      const data = await getFinanceStats(period);
-      setStats(data);
-      setGoalInput(data.goal?.goal_amount || '');
-    } catch {
+      console.log('Finance Page: Refreshing stats after goal save');
+      const data = await getFinanceStats();
+      console.log('Finance Page: Refreshed data:', data);
+      console.log('Finance Page: Refreshed goal data:', data?.goal);
+      
+      // Ensure goal amount is properly processed as a number
+      const goalAmount = data?.goal ? parseFloat(data.goal.goal_amount) || 0 : 0;
+      console.log('Finance Page: Parsed goal amount after refresh:', goalAmount);
+      
+      // Update stats with properly formatted goal
+      setStats({
+        ...data,
+        goal: data.goal ? {
+          ...data.goal,
+          goal_amount: goalAmount
+        } : null
+      });
+      
+      setGoalInput(goalAmount || '');
+    } catch (err) {
+      console.error('Finance Page: Error saving goal:', err);
       setError('Ziel konnte nicht aktualisiert werden');
     } finally {
       setLoading(false);
@@ -197,7 +241,17 @@ export default function FinancesPage() {
                 </div>
               </div>
 
-              {/* Monthly breakdown chart removed per client request */}
+              {/* Revenue chart */}
+              {stats?.monthly && (
+                <div className="bg-white/5 rounded-xl p-5 shadow-md mb-6">
+                  <h2 className="text-lg font-medium text-white mb-3">Jährlicher Umsatzverlauf</h2>
+                  <RevenueChart
+                    monthlyPaid={stats.monthly.paid}
+                    monthlyOpen={stats.monthly.open}
+                    yearlyGoal={stats.goal?.goal_amount || null}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
