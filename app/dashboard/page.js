@@ -7,7 +7,7 @@ import NextAppointment from '../components/NextAppointment';
 import FinanceCard from './FinanceCard';
 import RevenueChart from '../components/RevenueChart';
 import { useAuth } from '../../contexts/AuthContext';
-import { getFinanceStats } from '../../lib/finances-client';
+
 
 
 export default function Home() {
@@ -15,8 +15,8 @@ export default function Home() {
   const [error, setError] = useState('');
   const [craftsman, setCraftsman] = useState(null);
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
-  const [customerCount] = useState(0);
-  const [invoiceCount] = useState(0);
+  const [customerCount, setCustomerCount] = useState(0);
+  const [invoiceCount, setInvoiceCount] = useState(0);
   const [financeStats, setFinanceStats] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(true);
 
@@ -36,7 +36,12 @@ export default function Home() {
         return;
       }
       
-      const stats = await getFinanceStats();
+      const response = await fetcher('/api/finances');
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+      const responseData = await response.json();
+      const stats = responseData.data || responseData;
       console.log('Dashboard: Finance stats received:', stats);
       console.log('Dashboard: Monthly paid data:', stats?.monthly?.paid);
       console.log('Dashboard: Monthly open data:', stats?.monthly?.open);
@@ -46,6 +51,46 @@ export default function Home() {
       console.error('Dashboard: Error fetching finance stats:', err);
     } finally {
       setFinanceLoading(false);
+    }
+  };
+
+  // Function to fetch customer count
+  const loadCustomerCount = async () => {
+    try {
+      console.log('Dashboard: Fetching customer count...');
+      const response = await fetcher('/api/customers');
+      
+      if (response.ok) {
+        const data = await response.json();
+        const customers = data.data || data;
+        const count = Array.isArray(customers) ? customers.length : 0;
+        console.log('Dashboard: Customer count received:', count);
+        setCustomerCount(count);
+      } else {
+        console.error('Dashboard: Failed to fetch customers:', response.status);
+      }
+    } catch (err) {
+      console.error('Dashboard: Error fetching customer count:', err);
+    }
+  };
+
+  // Function to fetch invoice count
+  const loadInvoiceCount = async () => {
+    try {
+      console.log('Dashboard: Fetching invoice count...');
+      const response = await fetcher('/api/invoices');
+      
+      if (response.ok) {
+        const data = await response.json();
+        const invoices = data.data || data;
+        const count = Array.isArray(invoices) ? invoices.length : 0;
+        console.log('Dashboard: Invoice count received:', count);
+        setInvoiceCount(count);
+      } else {
+        console.error('Dashboard: Failed to fetch invoices:', response.status);
+      }
+    } catch (err) {
+      console.error('Dashboard: Error fetching invoice count:', err);
     }
   };
 
@@ -66,6 +111,8 @@ export default function Home() {
       try {
         fetchCraftsmanData();
         loadFinanceStats(); // Load finance stats
+        loadCustomerCount(); // Load customer count
+        loadInvoiceCount(); // Load invoice count
       } catch (error) {
         console.error('Error getting craftsman ID:', error);
         setError('Fehler bei der Benutzerauthentifizierung. Bitte versuchen Sie es später erneut.');

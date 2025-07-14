@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import RevenueChart from '../components/RevenueChart';
-import { getFinanceStats, setFinanceGoal } from '../../lib/finances-client';
+import { useAuthedFetch } from '../../lib/utils/useAuthedFetch';
+import { useRequireAuth } from '../../lib/utils/useRequireAuth';
 import Footer from '../components/Footer';
 
 const PERIODS = [
@@ -24,12 +25,30 @@ export default function FinancesPage() {
   const [goalInput, setGoalInput] = useState('');
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
+  
+  // Use authenticated fetch hook and require auth
+  const { user, loading: authLoading } = useRequireAuth();
+  const fetcher = useAuthedFetch();
 
   useEffect(() => {
-    setLoading(true);
-    console.log('Finance Page: Fetching stats...');
-    getFinanceStats()
-      .then(data => {
+    const loadFinanceStats = async () => {
+      // Don't make API calls until auth is ready and user is available
+      if (authLoading || !user) {
+        console.log('Finance Page: Waiting for auth...', { authLoading, hasUser: !!user });
+        return;
+      }
+      
+      setLoading(true);
+      console.log('Finance Page: Fetching stats...');
+      
+      try {
+        const response = await fetcher('/api/finances');
+        if (!response.ok) {
+          throw new Error(`HTTP Error ${response.status}`);
+        }
+        const responseData = await response.json();
+        const data = responseData.data || responseData;
+        
         console.log('Finance Page: Stats received:', data);
         console.log('Finance Page: Goal data:', data?.goal);
         
@@ -59,47 +78,91 @@ export default function FinancesPage() {
           setGoalInput(goalAmount);
           setError('');
         }
-      })
-      .catch(err => {
+      } catch (err) {
         console.error('Finance Page: Error fetching stats:', err);
         setError('Finanzstatistiken konnten nicht geladen werden');
-      })
-      .finally(() => setLoading(false));
-  }, [period]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadFinanceStats();
+  }, [period, authLoading, user?.id]);
 
   const handleGoalSave = async () => {
-    if (!goalInput || isNaN(goalInput)) {
+    console.log('Finance Page: handleGoalSave called with goalInput:', goalInput, 'type:', typeof goalInput);
+    
+    // Convert to number and validate
+    const goalValue = parseFloat(goalInput);
+    console.log('Finance Page: Parsed goal value:', goalValue, 'isNaN:', isNaN(goalValue));
+    
+    if (!goalInput || goalInput.trim() === '' || isNaN(goalValue) || goalValue <= 0) {
+      console.log('Finance Page: Validation failed - invalid goal input');
       setError('Bitte geben Sie eine gültige Zahl ein');
       return;
     }
     setLoading(true);
     try {
-      console.log('Finance Page: Saving goal:', goalInput);
-      const saveResponse = await setFinanceGoal(goalInput);
-      console.log('Finance Page: Goal save response:', saveResponse);
+      console.log('Finance Page: Saving goal:', goalValue);
+      
+      // Save the goal using fetcher directly
+      const saveResponse = await fetcher('/api/finances', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal_amount: goalValue })
+      });
+      
+      if (!saveResponse.ok) {
+        throw new Error(`HTTP Error ${saveResponse.status}`);
+      }
+      
+      const saveData = await saveResponse.json();
+      console.log('Finance Page: Goal save response:', saveData);
       setEditing(false);
       setError('');
       
-      // Refresh stats
+      // Refresh stats with a small delay to avoid timing issues
       console.log('Finance Page: Refreshing stats after goal save');
-      const data = await getFinanceStats();
-      console.log('Finance Page: Refreshed data:', data);
-      console.log('Finance Page: Refreshed goal data:', data?.goal);
+      await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
       
-      // Ensure goal amount is properly processed as a number
-      const goalAmount = data?.goal ? parseFloat(data.goal.goal_amount) || 0 : 0;
-      console.log('Finance Page: Parsed goal amount after refresh:', goalAmount);
-      
-      // Update stats with properly formatted goal
-      setStats({
-        ...data,
-        goal: data.goal ? {
-          ...data.goal,
-          goal_amount: goalAmount
-        } : null
-      });
-      
-      setGoalInput(goalAmount || '');
+      try {
+        const refreshResponse = await fetcher('/api/finances');
+        if (!refreshResponse.ok) {
+          throw new Error(`HTTP Error ${refreshResponse.status}`);
+        }
+        const responseData = await refreshResponse.json();
+        const data = responseData.data || responseData;
+        
+        console.log('Finance Page: Refreshed data:', data);
+        console.log('Finance Page: Refreshed goal data:', data?.goal);
+        
+        // Ensure goal amount is properly processed as a number
+        const goalAmount = data?.goal ? parseFloat(data.goal.goal_amount) || 0 : 0;
+        console.log('Finance Page: Parsed goal amount after refresh:', goalAmount);
+        
+        // Update stats with properly formatted goal
+        setStats({
+          ...data,
+          goal: data.goal ? {
+            ...data.goal,
+            goal_amount: goalAmount
+          } : null
+        });
+        
+        setGoalInput(goalAmount || '');
+      } catch (refreshError) {
+        console.error('Finance Page: Error refreshing stats after save:', refreshError);
+        // If refresh fails, at least update the UI with the saved goal
+        console.log('Finance Page: Using saved goal value for UI update:', goalValue);
+        setStats(prevStats => ({
+          ...prevStats,
+          goal: {
+            goal_amount: goalValue,
+            goal_period: 'year'
+          }
+        }));
+        setGoalInput(goalValue);
+      }
     } catch (err) {
       console.error('Finance Page: Error saving goal:', err);
       setError('Ziel konnte nicht aktualisiert werden');

@@ -56,6 +56,23 @@ export default function NewAppointmentPage() {
   }, []);
 
   /* ---------- handlers ---------- */
+  const handleCustomerChange = (e) => {
+    const selectedCustomerId = e.target.value;
+    setCustomerId(selectedCustomerId);
+    
+    // Auto-fill location with customer's address
+    if (selectedCustomerId) {
+      const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+      if (selectedCustomer && selectedCustomer.address) {
+        setLocation(selectedCustomer.address);
+        console.log('Auto-filled location with customer address:', selectedCustomer.address);
+      }
+    } else {
+      // Clear location if no customer is selected
+      setLocation('');
+    }
+  };
+
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
@@ -134,7 +151,7 @@ export default function NewAppointmentPage() {
             {!isPrivate && (
               <div>
                 <label className="block mb-1">Kunde *</label>
-                <select value={customerId} onChange={e=>setCustomerId(e.target.value)} className="w-full bg-[#1e1e1e] border border-white/10 rounded-lg p-3">
+                <select value={customerId} onChange={handleCustomerChange} className="w-full bg-[#1e1e1e] border border-white/10 rounded-lg p-3">
                   <option value="">Bitte wählen…</option>
                   {customers.map(c=> (
                     <option key={c.id} value={c.id}>{c.name}</option>

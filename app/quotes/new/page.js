@@ -6,7 +6,6 @@ import Link from 'next/link';
 
 import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
-import { getNumericCraftsmanId } from '../../../utils/id-mapper';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { generateInvoicePdf } from '../../../lib/utils/pdfGenerator';
@@ -71,15 +70,23 @@ export default function NewQuotePage() {
 
     const init = async () => {
       try {
-        // Numeric craftsman ID derived from profile
-        const numericId = await getNumericCraftsmanId(user);
-        if (!numericId) {
+        // Get craftsman ID using the same system as other APIs
+        const craftsmanResponse = await fetcher('/api/craftsmen');
+        
+        if (!craftsmanResponse.ok) {
+          const errorData = await craftsmanResponse.json().catch(() => null);
+          throw new Error(errorData?.message || `HTTP Error ${craftsmanResponse.status}`);
+        }
+        
+        const craftsmanData = await craftsmanResponse.json();
+        
+        if (craftsmanData.status !== 'success' || !craftsmanData.data) {
           setError('Ihr Konto konnte keiner Handwerker-ID zugeordnet werden.');
           return;
         }
 
-        // Persist in local state for submission
-        setFormData(prev => ({ ...prev, craftsman_id: String(numericId) }));
+        // Persist craftsman UUID in local state for submission
+        setFormData(prev => ({ ...prev, craftsman_id: craftsmanData.data.id }));
 
         // Fetch customers & appointments in parallel
         await Promise.all([fetchCustomers(), fetchAppointments()]);
