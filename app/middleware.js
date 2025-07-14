@@ -27,12 +27,13 @@ export function OnboardingMiddleware({ children }) {
         if (loading) return;
         
         // Debug info
-        console.log('Auth state:', { 
+        console.log('Middleware Auth state:', { 
           hasToken, 
-          user: user ? 'exists' : 'null',
-          session: session ? 'exists' : 'null',
+          user: user ? { id: user.id, email: user.email } : 'null',
+          session: session ? { hasAccessToken: !!session.access_token } : 'null',
           loading,
-          pathname
+          pathname,
+          timestamp: new Date().toISOString()
         });
 
         // If no session but we have a token, try refreshing the user

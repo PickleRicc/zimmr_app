@@ -116,8 +116,8 @@ export async function POST(req) {
         email: body.email || null,
         phone: body.phone || null,
         address: body.address || null,
-        city: body.city || null,
-        zip: body.zip || null,
+        service_type: body.service_type || null,
+        notes: body.notes || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })

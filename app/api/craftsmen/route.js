@@ -4,6 +4,7 @@
 import { 
   createSupabaseClient, 
   getUserFromRequest, 
+  getOrCreateCraftsmanId,
   handleApiError,
   handleApiSuccess 
 } from '../../../lib/api-utils';
@@ -22,19 +23,26 @@ export async function GET(req) {
     }
 
     console.log(`${ROUTE_NAME} - Fetching craftsman profile for user: ${user.id}`);
-    const { data, error } = await supabase
+    
+    // First try to get existing craftsman, or create if needed
+    const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
+    
+    // Now fetch the full craftsman record
+    const { data: craftsmen, error } = await supabase
       .from('craftsmen')
       .select('*')
-      .eq('user_id', user.id)
-      .single();
+      .eq('user_id', user.id);
 
     if (error) {
       console.error(`${ROUTE_NAME} - Error fetching craftsman:`, error.message);
       return handleApiError(`Error fetching craftsman profile: ${error.message}`, 500, ROUTE_NAME);
     }
     
+    // Handle multiple records by taking the first one
+    const data = craftsmen && craftsmen.length > 0 ? craftsmen[0] : null;
+    
     if (!data) {
-      return handleApiError('Craftsman profile not found', 404, ROUTE_NAME);
+      return handleApiError('Craftsman profile not found after creation attempt', 404, ROUTE_NAME);
     }
     
     return handleApiSuccess(data, 'Craftsman profile retrieved successfully');

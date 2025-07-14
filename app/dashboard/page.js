@@ -9,6 +9,7 @@ import RevenueChart from '../components/RevenueChart';
 import { useAuth } from '../../contexts/AuthContext';
 import { getFinanceStats } from '../../lib/finances-client';
 
+
 export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -245,6 +246,7 @@ export default function Home() {
                 <p className="text-white/70 mb-6">
                   {craftsman ? `Fliesenleger` : 'Handwerker-Dashboard'}
                 </p>
+
               </div>
 
               {/* Two-column layout for appointment and finance chart */}
