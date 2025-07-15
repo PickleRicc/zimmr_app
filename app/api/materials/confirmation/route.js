@@ -98,34 +98,90 @@ export async function POST(req) {
 
     console.log(`${ROUTE_NAME} - Saving materials confirmation for craftsman: ${craftsmanId}`);
 
-    // Insert confirmation record
-    const { data, error } = await supabase
+    // First check if confirmation already exists
+    const { data: existingData, error: checkError } = await supabase
       .from('materials_confirmations')
-      .upsert({ craftsman_id: craftsmanId })
-      .select()
+      .select('*')
+      .eq('craftsman_id', craftsmanId)
       .single();
     
-    if (error) {
-      console.error(`${ROUTE_NAME} - Error saving confirmation:`, error);
+    // If confirmation already exists, return success
+    if (existingData && !checkError) {
+      console.log(`${ROUTE_NAME} - Confirmation already exists for craftsman: ${craftsmanId}`);
+      const responseData = {
+        confirmed: true,
+        confirmed_at: existingData.confirmed_at
+      };
+      return handleApiSuccess(
+        responseData,
+        'Materials terms have been successfully confirmed',
+        200
+      );
+    }
+    
+    // If no existing confirmation, insert new one
+    if (checkError && checkError.code === 'PGRST116') {
+      // Record doesn't exist, so insert it
+      const { data, error } = await supabase
+        .from('materials_confirmations')
+        .insert({ craftsman_id: craftsmanId })
+        .select()
+        .single();
+      
+      if (error) {
+        // Handle the case where another request might have inserted between our check and insert
+        if (error.code === '23505') {
+          console.log(`${ROUTE_NAME} - Confirmation was created by another request, treating as success`);
+          // Fetch the existing record
+          const { data: newExistingData } = await supabase
+            .from('materials_confirmations')
+            .select('*')
+            .eq('craftsman_id', craftsmanId)
+            .single();
+          
+          const responseData = {
+            confirmed: true,
+            confirmed_at: newExistingData?.confirmed_at || new Date().toISOString()
+          };
+          return handleApiSuccess(
+            responseData,
+            'Materials terms have been successfully confirmed',
+            200
+          );
+        }
+        
+        console.error(`${ROUTE_NAME} - Error saving confirmation:`, error);
+        return handleApiError(
+          error,
+          'Failed to save materials confirmation',
+          500,
+          ROUTE_NAME
+        );
+      }
+
+      const responseData = {
+        confirmed: true,
+        confirmed_at: data.confirmed_at
+      };
+
+      console.log(`${ROUTE_NAME} - Successfully recorded materials confirmation at ${data.confirmed_at}`);
+      return handleApiSuccess(
+        responseData,
+        'Materials terms have been successfully confirmed',
+        201
+      );
+    }
+    
+    // If there was an unexpected error checking for existing confirmation
+    if (checkError) {
+      console.error(`${ROUTE_NAME} - Error checking existing confirmation:`, checkError);
       return handleApiError(
-        error,
-        'Failed to save materials confirmation',
+        checkError,
+        'Failed to check existing materials confirmation',
         500,
         ROUTE_NAME
       );
     }
-
-    const responseData = {
-      confirmed: true,
-      confirmed_at: data.confirmed_at
-    };
-
-    console.log(`${ROUTE_NAME} - Successfully recorded materials confirmation at ${data.confirmed_at}`);
-    return handleApiSuccess(
-      responseData,
-      'Materials terms have been successfully confirmed',
-      201
-    );
   } catch (err) {
     console.error(`${ROUTE_NAME} - POST error:`, err);
     return handleApiError(err, 'Server error', 500, ROUTE_NAME);

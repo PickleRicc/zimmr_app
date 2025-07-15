@@ -480,7 +480,7 @@ export default function Home() {
                     <span className="font-medium">Neuen Kunden hinzufügen</span>
                   </Link>
                   <Link 
-                    href="/materials/new" 
+                    href="/materials" 
                     className="bg-white/5 hover:bg-white/10 text-white p-4 rounded-xl flex flex-col items-center justify-center text-center transition-all duration-200 h-32"
                   >
                     <div className="p-3 bg-[#ffcb00]/20 rounded-full mb-3">

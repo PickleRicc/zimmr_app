@@ -23,8 +23,10 @@ const localizer = dateFnsLocalizer({
 /**
  * @param {Object} props
  * @param {Array} props.appointments
+ * @param {Array} props.customers
+ * @param {Function} props.onDateClick - Callback when a date is clicked for creating new appointment
  */
-export default function CalendarView({ appointments }) {
+export default function CalendarView({ appointments, customers, onDateClick }) {
   // Helper: get YYYY-MM-DD from date string
   function getDateKey(dateString) {
     return dateString.split('T')[0];
@@ -209,13 +211,18 @@ export default function CalendarView({ appointments }) {
   }
 
   // Popup for day details (show time as string)
-  const [popupInfo, setPopupInfo] = useState({ show: false, date: null, events: [] });
+  const [popupInfo, setPopupInfo] = useState({ show: false, date: null, events: [], canCreateNew: false });
   function handleDateClick(slotInfo) {
     const slotDateKey = slotInfo.start.toISOString().split('T')[0];
     const todaysEvents = events.filter(ev => ev.dateKey === slotDateKey);
-    if (todaysEvents.length > 0) {
-      setPopupInfo({ show: true, date: slotInfo.start, events: todaysEvents });
-    }
+    
+    // Always show popup - either with existing events or option to create new
+    setPopupInfo({ 
+      show: true, 
+      date: slotInfo.start, 
+      events: todaysEvents,
+      canCreateNew: true
+    });
   }
   function closePopup() {
     setPopupInfo({ show: false, date: null, events: [] });
@@ -329,6 +336,25 @@ export default function CalendarView({ appointments }) {
                 ))}
                 {popupInfo.events.length === 0 && (
                   <div className="text-center py-3 text-blue-200">Keine Termine für diesen Tag</div>
+                )}
+                
+                {/* Create New Appointment Button */}
+                {popupInfo.canCreateNew && onDateClick && (
+                  <div className="mt-4 pt-3 border-t border-white/10">
+                    <button
+                      onClick={() => {
+                        const dateStr = popupInfo.date.toISOString().split('T')[0];
+                        onDateClick(dateStr);
+                        closePopup();
+                      }}
+                      className="w-full bg-[#ffcb00] hover:bg-[#e6b800] text-black py-2.5 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                      </svg>
+                      Neuen Termin erstellen
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

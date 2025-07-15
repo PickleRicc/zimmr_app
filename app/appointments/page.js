@@ -129,9 +129,15 @@ export default function AppointmentsPage() {
 
   const openRejectModal = appt => {
     setAppointmentToReject(appt);
-    setRejectReason('');
     setShowRejectModal(true);
   };
+
+  // Handle calendar date click for creating new appointments
+  const handleDateClick = (dateStr) => {
+    // Navigate to new appointment page with pre-filled date
+    router.push(`/appointments/new?date=${dateStr}`);
+  };
+
   const closeRejectModal = () => {
     setShowRejectModal(false);
     setAppointmentToReject(null);
@@ -212,7 +218,11 @@ export default function AppointmentsPage() {
             </div>
 
             {activeTab === 'calendar' ? (
-              <CalendarView appointments={appointments} customers={customers} />
+              <CalendarView 
+                appointments={appointments} 
+                customers={customers} 
+                onDateClick={handleDateClick}
+              />
             ) : (
               <div className="space-y-4">
                 

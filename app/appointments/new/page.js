@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 
 export default function NewAppointmentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fetcher = useAuthedFetch();
   const fetcherRef = useRef(fetcher);
   useEffect(()=>{fetcherRef.current = fetcher;}, [fetcher]);
@@ -27,6 +28,15 @@ export default function NewAppointmentPage() {
   const [duration, setDuration] = useState(60);
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
+
+  /* ---------- pre-fill date from URL parameter ---------- */
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      setScheduledDate(dateParam);
+      console.log('Pre-filled date from calendar:', dateParam);
+    }
+  }, [searchParams]);
 
   /* ---------- load customers ---------- */
   useEffect(() => {
