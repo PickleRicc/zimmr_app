@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { customersAPI } from '../../lib/api';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
+import { useAuth } from '../../../contexts/AuthContext';
+import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 
 export default function CustomerDetailsPage() {
   const [loading, setLoading] = useState(true);
@@ -22,29 +24,28 @@ export default function CustomerDetailsPage() {
   });
   
   const router = useRouter();
-  const [customerId, setCustomerId] = useState(null);
+  const params = useParams();
+  const { session } = useAuth();
+  const fetcher = useAuthedFetch();
+  const customerId = params?.id;
 
   useEffect(() => {
-    // Extract customer ID from URL
-    const pathSegments = window.location.pathname.split('/');
-    const id = pathSegments[pathSegments.length - 1];
-    setCustomerId(id);
-    
-    // Check if user is logged in
-    const token = localStorage.getItem('token');
-    if (!token) {
+    // Check if user is authenticated
+    if (!session) {
       router.push('/auth/login');
       return;
     }
-  }, [router]);
+  }, [session, router]);
 
   useEffect(() => {
-    if (customerId) {
+    if (customerId && session) {
       fetchCustomerData();
     }
-  }, [customerId]);
+  }, [customerId, session]);
 
   const fetchCustomerData = async () => {
+    if (!customerId || !session) return;
+    
     setLoading(true);
     try {
       const customerData = await customersAPI.getById(customerId);

@@ -60,7 +60,8 @@ export default function InvoicesPage() {
     try {
       setLoading(true);
       
-      const res = await fetcher('/api/invoices');
+      // Fetch invoices with customer data included
+      const res = await fetcher('/api/invoices?include_customer=true');
       if (!res.ok) throw new Error(await res.text());
       const responseData = await res.json();
       console.log('Fetched invoices response:', responseData);
@@ -68,8 +69,14 @@ export default function InvoicesPage() {
       // Handle both standardized response format and legacy format
       const invoicesArray = responseData.data || responseData;
       
-      console.log('Processed invoices array:', invoicesArray);
-      setInvoices(invoicesArray);
+      // Add customer_name field from customer data for display
+      const invoicesWithCustomerNames = invoicesArray.map(invoice => ({
+        ...invoice,
+        customer_name: invoice.customer ? `${invoice.customer.first_name} ${invoice.customer.last_name}`.trim() : null
+      }));
+      
+      console.log('Processed invoices array:', invoicesWithCustomerNames);
+      setInvoices(invoicesWithCustomerNames);
       setError(null);
       
       // Display success message if available in API response

@@ -60,6 +60,48 @@ export const customersAPI = {
     const res = await authedFetch(`/api/customers${toQuery(params)}`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+  async getById(id) {
+    console.log(`Fetching customer ${id}`);
+    try {
+      const res = await authedFetch(`/api/customers?id=${id}`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error fetching customer ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const customer = responseData.data || responseData;
+      console.log(`Successfully fetched customer ${id}`);
+      return customer;
+    } catch (error) {
+      console.error(`Exception in customersAPI.getById(${id}):`, error);
+      throw error;
+    }
+  },
+  async update(id, payload = {}) {
+    console.log(`Updating customer ${id} with payload:`, payload);
+    try {
+      const res = await authedFetch('/api/customers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...payload })
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Error updating customer ${id}:`, errorText);
+        throw new Error(errorText);
+      }
+      const responseData = await res.json();
+      // Handle both standardized response format and legacy format
+      const customer = responseData.data || responseData;
+      console.log(`Successfully updated customer ${id}`);
+      return customer;
+    } catch (error) {
+      console.error(`Exception in customersAPI.update(${id}):`, error);
+      throw error;
+    }
   }
 };
 

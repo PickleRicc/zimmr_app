@@ -279,8 +279,8 @@ export default function AppointmentDetailPage() {
         notes: notes
       };
 
-      // Call the API to complete appointment
-      const res = await fetcherRef.current(`/api/appointments/${appointment.id}/complete`, {
+      // Call the API to complete appointment using the standard PUT endpoint
+      const res = await fetcherRef.current(`/api/appointments/${appointment.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(completeData)
@@ -300,13 +300,15 @@ export default function AppointmentDetailPage() {
 
       // Redirect to the new invoice page with appointment data
       setTimeout(() => {
-        // Prepare appointment data for invoice creation
+        // Prepare appointment data for invoice creation with correct parameter names
         const appointmentData = {
           appointment_id: appointment.id,
           customer_id: appointment.customer_id,
-          price: servicePrice,
+          amount: servicePrice, // Use 'amount' instead of 'price'
+          service_date: appointment.scheduled_at ? appointment.scheduled_at.split('T')[0] : '',
+          location: appointment.location || '',
           notes: notes || appointment.notes || '',
-          from_appointment: true
+          from_appointment: 'true' // Ensure string value
         };
 
         // Create query string with appointment data

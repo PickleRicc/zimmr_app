@@ -94,15 +94,23 @@ export default function QuotesPage() {
     try {
       setLoading(true);
       
-      // Use quotesAPI to fetch only quotes for this craftsman
-      const response = await fetcher('/api/quotes').then(r=>r.json());
+      // Use quotesAPI to fetch quotes with customer data included
+      const response = await fetcher('/api/quotes?include_customer=true').then(r=>r.json());
       
       console.log('Fetched quotes:', response);
       
       // Handle the new standardized API response format
       const quotesData = response.data || response;
       
-      setQuotes(quotesData);
+      // Add customer_name field from customer data for display
+      const quotesWithCustomerNames = quotesData.map(quote => ({
+        ...quote,
+        customer_name: quote.customer ?
+        ([quote.customer.first_name, quote.customer.last_name].filter(Boolean).join(' ').trim() || quote.customer.name || null)
+        : null
+      }));
+      
+      setQuotes(quotesWithCustomerNames);
       setError(null);
     } catch (err) {
       console.error('Error fetching quotes:', err);

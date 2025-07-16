@@ -37,6 +37,7 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
+    const includeCustomer = searchParams.get('include_customer') === 'true';
     console.log(`${ROUTE_NAME} - Fetching invoices for craftsman: ${craftsmanId}${status ? `, filtered by status: ${status}` : ''}`);
 
     let query = supabase
@@ -51,6 +52,38 @@ export async function GET(req) {
     if (error) {
       console.error(`${ROUTE_NAME} - Error querying invoices:`, error);
       return handleApiError(`Error fetching invoices: ${error.message}`, 500, ROUTE_NAME);
+    }
+    
+    // If including customer data, fetch customer details for each invoice
+    if (includeCustomer && data && data.length > 0) {
+      const customerIds = data
+        .filter(invoice => invoice.customer_id)
+        .map(invoice => invoice.customer_id);
+        
+      if (customerIds.length > 0) {
+        const { data: customers, error: custError } = await supabase
+          .from('customers')
+          .select('*')
+          .in('id', customerIds);
+          
+        if (custError) {
+          console.error(`${ROUTE_NAME} - GET customer data error:`, custError);
+          return handleApiError(custError, 'Failed to retrieve customer data', 500, ROUTE_NAME);
+        }
+        
+        // Create customer lookup map
+        const customerMap = {};
+        customers?.forEach(customer => {
+          customerMap[customer.id] = customer;
+        });
+        
+        // Attach customer data to invoices
+        data.forEach(invoice => {
+          if (invoice.customer_id) {
+            invoice.customer = customerMap[invoice.customer_id] || null;
+          }
+        });
+      }
     }
     
     return handleApiSuccess(data || [], 'Invoices retrieved successfully');

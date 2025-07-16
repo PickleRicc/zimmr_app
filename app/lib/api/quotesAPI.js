@@ -2,6 +2,7 @@
 // These thin wrappers make component code cleaner and pave the way for SSR calls later.
 
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
+import pdfGenerator from '../../../lib/utils/pdfGenerator';
 
 // This API should now be used with authedFetch from the useAuthedFetch hook
 // For backwards compatibility, we'll also allow direct calls with default headers
@@ -108,14 +109,20 @@ export const quotesAPI = {
       console.log('Total materials price:', quote.total_materials_price);
       console.log('========= END MATERIALS DEBUG =========');
       
-      // CRITICAL FIX: Use the correct PDF generator function for quotes
-      const pdfModule = await import('../../../lib/utils/pdfGenerator');
-      const pdfGenerator = pdfModule.default || pdfModule;
-      
-      // Use the correct quote PDF generator
-      await pdfGenerator.generateQuotePdf(quote, craftsmanData);
-      console.log('Quote PDF generated successfully via quotesAPI');
-      return true;
+      // CRITICAL FIX: Use setTimeout to prevent DOM conflicts during React rendering
+      return new Promise((resolve, reject) => {
+        setTimeout(async () => {
+          try {
+            // Use the correct quote PDF generator with static import
+            await pdfGenerator.generateQuotePdf(quote, craftsmanData);
+            console.log('Quote PDF generated successfully via quotesAPI');
+            resolve(true);
+          } catch (error) {
+            console.error('Error generating PDF:', error);
+            reject(error);
+          }
+        }, 100); // Small delay to let React finish current render cycle
+      });
     }
     throw new Error('PDF generation not available on server');
   },

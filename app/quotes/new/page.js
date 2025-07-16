@@ -338,7 +338,8 @@ export default function NewQuotePage() {
 
   const handleAppointmentChange = (e) => {
     const appointmentId = e.target.value;
-    const appointment = appointments.find(a => a.id === parseInt(appointmentId));
+    // Compare IDs as strings to support both numeric and UUID formats
+    const appointment = appointments.find(a => String(a.id) === String(appointmentId));
     setSelectedAppointment(appointment);
     
     // Update form data with appointment information
@@ -674,11 +675,14 @@ export default function NewQuotePage() {
                         disabled={loading || success}
                       >
                         <option value="">-- Kunde auswählen --</option>
-                        {customers.map(customer => (
-                          <option key={customer.id} value={customer.id}>
-                            {customer.name} {customer.email ? `(${customer.email})` : ''}
-                          </option>
-                        ))}
+                        {customers.map(customer => {
+                           const displayName = customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
+                           return (
+                             <option key={customer.id} value={customer.id}>
+                               {displayName || 'Unbenannt'} {customer.email ? `(${customer.email})` : ''}
+                             </option>
+                           );
+                         })}
                       </select>
                       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
                         <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">

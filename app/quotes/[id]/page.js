@@ -7,8 +7,9 @@ import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
-// Changed from direct import to dynamic import to avoid DOM errors
-import MaterialSelector from '../../components/MaterialSelector';
+import dynamic from 'next/dynamic';
+// Dynamically import MaterialSelector only on the client to avoid SSR errors
+const MaterialSelector = dynamic(() => import('../../components/MaterialSelector'), { ssr: false });
 
 // Format date for input fields (YYYY-MM-DD)
 const formatDateForInput = (dateString) => {
@@ -153,8 +154,9 @@ export default function QuoteDetailPage({ params }) {
     try {
       const response = await fetcher('/api/customers');
       if (response.ok) {
-        const data = await response.json();
-        setCustomers(data);
+        const json = await response.json();
+        const customersArray = json.data || json;
+        setCustomers(Array.isArray(customersArray) ? customersArray : []);
       } else {
         throw new Error('Failed to fetch customers');
       }
@@ -168,8 +170,9 @@ export default function QuoteDetailPage({ params }) {
       setLoadingAppointments(true);
       const response = await fetcher('/api/appointments');
       if (response.ok) {
-        const data = await response.json();
-        setAppointments(data);
+        const json = await response.json();
+        const appointmentsArray = json.data || json;
+        setAppointments(Array.isArray(appointmentsArray) ? appointmentsArray : []);
         setLoadingAppointments(false);
       } else {
         throw new Error('Failed to fetch appointments');
