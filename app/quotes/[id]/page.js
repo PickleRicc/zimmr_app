@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useRequireAuth } from '../../../lib/utils/useRequireAuth';
@@ -54,6 +54,9 @@ const formatDate = (dateString) => {
 };
 
 export default function QuoteDetailPage({ params }) {
+  // Unwrap params using React.use() as required by Next.js
+  const resolvedParams = React.use(params);
+  const quoteId = resolvedParams.id;
   
   const [formData, setFormData] = useState({
     craftsman_id: '',
@@ -86,7 +89,6 @@ export default function QuoteDetailPage({ params }) {
   const router = useRouter();
   const { user, loading: authLoading } = useRequireAuth();
   const fetcher = useAuthedFetch();
-  const quoteId = params?.id;
 
   useEffect(() => {
     if (authLoading || !user || !quoteId) return;
@@ -115,16 +117,27 @@ export default function QuoteDetailPage({ params }) {
       if (!response.ok) {
         throw new Error('Failed to fetch quote details');
       }
-      const quoteData = await response.json();
+      const responseData = await response.json();
+      // Extract the actual quote data from the API response
+      const quoteData = responseData.data || responseData;
       
-      // DEBUGGING: Log materials information when quote is fetched
-      console.log('========= MATERIALS DATA DEBUG (Quote Fetch) =========');
-      console.log('Fetched quote.materials:', quoteData.materials);
+      // DEBUGGING: Log all quote information when quote is fetched
+      console.log('========= QUOTE DATA DEBUG (Quote Fetch) =========');
+      console.log('Raw API response:', responseData);
+      console.log('Extracted quote data:', quoteData);
+      console.log('Quote ID:', quoteData.id);
+      console.log('Customer ID:', quoteData.customer_id);
+      console.log('Amount:', quoteData.amount);
+      console.log('Due date:', quoteData.due_date);
+      console.log('Service date:', quoteData.service_date);
+      console.log('Location:', quoteData.location);
+      console.log('Notes:', quoteData.notes);
+      console.log('Created at:', quoteData.created_at);
+      console.log('Materials:', quoteData.materials);
       console.log('Materials valid array?', Array.isArray(quoteData.materials));
       console.log('Materials length:', Array.isArray(quoteData.materials) ? quoteData.materials.length : 0);
       console.log('Total materials price:', quoteData.total_materials_price);
-      console.log('Raw quote data:', quoteData);
-      console.log('========= END MATERIALS DEBUG =========');
+      console.log('========= END QUOTE DEBUG =========');
       
       // Format dates for input fields
       const formattedQuote = {
@@ -138,7 +151,18 @@ export default function QuoteDetailPage({ params }) {
         total_materials_price: quoteData.total_materials_price || calculateMaterialsTotal(quoteData.materials || [])
       };
       
-      console.log('Formatted quote with materials:', formattedQuote.materials);
+      console.log('========= FORMATTED QUOTE DEBUG =========');
+      console.log('Formatted quote:', formattedQuote);
+      console.log('Formatted quote ID:', formattedQuote.id);
+      console.log('Formatted customer ID:', formattedQuote.customer_id);
+      console.log('Formatted amount:', formattedQuote.amount);
+      console.log('Formatted due date:', formattedQuote.due_date);
+      console.log('Formatted service date:', formattedQuote.service_date);
+      console.log('Formatted location:', formattedQuote.location);
+      console.log('Formatted notes:', formattedQuote.notes);
+      console.log('Formatted created at:', formattedQuote.created_at);
+      console.log('Formatted materials:', formattedQuote.materials);
+      console.log('========= END FORMATTED QUOTE DEBUG =========');
       
       setFormData(formattedQuote);
       setCreatedQuote(formattedQuote);
@@ -508,10 +532,138 @@ export default function QuoteDetailPage({ params }) {
                 </div>
               )}
 
-              {/* Action buttons removed from top */}
+              {/* Quote Details Display */}
+              {!editMode ? (
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-semibold text-[#ffcb00]">Angebot #{formData.id || 'N/A'}</h2>
+                    <span className="px-3 py-1 rounded-xl text-sm font-medium bg-blue-900/30 text-blue-400 border border-blue-800/50">
+                      ANGEBOT
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Kunde</h3>
+                      <p className="text-white">{customers.find(c => c.id === formData.customer_id)?.name || 'N/A'}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Erstellungsdatum</h3>
+                      <p className="text-white">{formatDate(formData.created_at)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Fälligkeitsdatum</h3>
+                      <p className="text-white">{formatDate(formData.due_date)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Leistungsdatum</h3>
+                      <p className="text-white">{formatDate(formData.service_date)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Standort</h3>
+                      <p className="text-white">{formData.location || 'N/A'}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">MwSt. befreit</h3>
+                      <p className="text-white">{formData.vat_exempt ? 'Ja' : 'Nein'}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Dienstleistung</h3>
+                      <p className="text-white">€{parseFloat(formData.amount || 0).toFixed(2)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Materialien</h3>
+                      <p className="text-white">€{parseFloat(formData.total_materials_price || 0).toFixed(2)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">MwSt.</h3>
+                      <p className="text-white">€{parseFloat(formData.tax_amount || 0).toFixed(2)}</p>
+                    </div>
+                    
+                    <div className="p-2">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Gesamtbetrag</h3>
+                      <p className="text-white font-medium text-lg">€{parseFloat(formData.total_amount || 0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                  
+                  {formData.notes && (
+                    <div className="mt-6">
+                      <h3 className="text-sm font-medium text-white/60 mb-2">Notizen</h3>
+                      <p className="text-white whitespace-pre-line bg-[#2a2a2a]/50 p-4 rounded-xl border border-[#2a2a2a]">{formData.notes}</p>
+                    </div>
+                  )}
+                  
+                  {/* Linked Appointment */}
+                  {selectedAppointment && (
+                    <div className="mt-8">
+                      <h3 className="text-sm font-medium text-white/60 mb-3 flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        Verknüpfter Termin
+                      </h3>
+                      <div className="bg-[#2a2a2a]/50 rounded-xl p-4 border border-[#2a2a2a]">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-2">
+                            <span className="text-white/60 text-sm">Datum:</span>{' '}
+                            <span className="text-white">{formatDate(selectedAppointment.start_time)}</span>
+                          </div>
+                          <div className="p-2">
+                            <span className="text-white/60 text-sm">Titel:</span>{' '}
+                            <span className="text-white">{selectedAppointment.title || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Action Buttons */}
+                  <div className="mt-8 flex flex-wrap gap-3 justify-end items-center">
+                    <button
+                      type="button"
+                      onClick={() => router.back()}
+                      className="px-5 py-2.5 border border-white/20 rounded-xl text-white hover:bg-white/5 transition-all duration-300"
+                    >
+                      Zurück
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={handleGeneratePdf}
+                      disabled={pdfLoading}
+                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
+                    >
+                      {pdfLoading ? 'PDF wird erstellt...' : 'PDF erstellen'}
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setEditMode(true)}
+                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5"
+                    >
+                      Angebot bearbeiten
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Edit Mode Form */
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-semibold text-[#ffcb00]">Angebot bearbeiten</h2>
+                  </div>
+                </div>
+              )}
 
               {/* Quote details form */}
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={handleSubmit} className={editMode ? '' : 'hidden'}>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Customer selection */}
                   <div>
@@ -787,34 +939,7 @@ export default function QuoteDetailPage({ params }) {
                       ) : 'Angebot aktualisieren'}
                     </button>
                   </div>
-                ) : (
-                  <div className="mt-8 flex flex-wrap gap-3 items-center">
-                    <button
-                      type="button"
-                      onClick={() => setEditMode(true)}
-                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5"
-                    >
-                      Angebot bearbeiten
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={handleGeneratePdf}
-                      disabled={pdfLoading}
-                      className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
-                    >
-                      {pdfLoading ? 'PDF wird erstellt...' : 'PDF erstellen'}
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => router.back()}
-                      className="px-5 py-2.5 border border-white/20 rounded-xl text-white hover:bg-white/5 transition-all duration-300"
-                    >
-                      Zurück
-                    </button>
-                  </div>
-                )}
+                ) : null}
               </form>
               </div>
             </div>

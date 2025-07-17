@@ -29,12 +29,19 @@ export default function NewAppointmentPage() {
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
 
-  /* ---------- pre-fill date from URL parameter ---------- */
+  /* ---------- pre-fill date and customer from URL parameters ---------- */
   useEffect(() => {
     const dateParam = searchParams.get('date');
+    const customerIdParam = searchParams.get('customer_id');
+    
     if (dateParam) {
       setScheduledDate(dateParam);
       console.log('Pre-filled date from calendar:', dateParam);
+    }
+    
+    if (customerIdParam) {
+      setCustomerId(customerIdParam);
+      console.log('Pre-filled customer ID from URL:', customerIdParam);
     }
   }, [searchParams]);
 
@@ -50,7 +57,18 @@ export default function NewAppointmentPage() {
         
         // Extract data, supporting both new standardized and legacy formats
         const customerData = response.data !== undefined ? response.data : response;
-        setCustomers(Array.isArray(customerData) ? customerData : []);
+        const loadedCustomers = Array.isArray(customerData) ? customerData : [];
+        setCustomers(loadedCustomers);
+        
+        // Auto-fill location if customer is pre-selected from URL
+        const customerIdParam = searchParams.get('customer_id');
+        if (customerIdParam && loadedCustomers.length > 0) {
+          const selectedCustomer = loadedCustomers.find(c => c.id === customerIdParam);
+          if (selectedCustomer && selectedCustomer.address) {
+            setLocation(selectedCustomer.address);
+            console.log('Auto-filled location from pre-selected customer:', selectedCustomer.address);
+          }
+        }
         
         // Display success message if available
         if (response.message) {
@@ -63,7 +81,7 @@ export default function NewAppointmentPage() {
         setLoadingCustomers(false);
       }
     })();
-  }, []);
+  }, [searchParams]);
 
   /* ---------- handlers ---------- */
   const handleCustomerChange = (e) => {

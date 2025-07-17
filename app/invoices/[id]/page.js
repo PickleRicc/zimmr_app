@@ -183,21 +183,50 @@ export default function InvoiceDetailPage({ params }) {
     }, 0).toFixed(2);
   };
 
-  // Handle materials selection changes
-  const handleMaterialsChange = (materials) => {
-    const materialsTotal = calculateMaterialsTotal(materials);
+  // Handle form input changes
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const newValue = type === 'checkbox' ? checked : value;
     
     setFormData(prev => {
-      const serviceTotal = parseFloat(prev.amount) || 0;
-      const taxAmount = prev.vat_exempt ? 0 : (serviceTotal * 0.19).toFixed(2);
-      const subtotal = (serviceTotal + parseFloat(taxAmount)).toFixed(2);
-      const totalAmount = (parseFloat(subtotal) + parseFloat(materialsTotal)).toFixed(2);
+      const updated = {
+        ...prev,
+        [name]: newValue
+      };
+      
+      // Recalculate total when amount or tax changes
+      if (name === 'amount' || name === 'tax_amount') {
+        const amount = parseFloat(name === 'amount' ? newValue : updated.amount) || 0;
+        const taxAmount = parseFloat(name === 'tax_amount' ? newValue : updated.tax_amount) || 0;
+        const materialsPrice = parseFloat(updated.total_materials_price) || 0;
+        
+        // Total = service amount + tax + materials
+        updated.total_amount = (amount + taxAmount + materialsPrice).toFixed(2);
+      }
+      
+      return updated;
+    });
+  };
+
+  // Handle materials selection changes
+  const handleMaterialsChange = (materials) => {
+    console.log('Materials changed:', materials);
+    
+    // Calculate total materials price
+    const totalMaterialsPrice = calculateMaterialsTotal(materials);
+    
+    // Update form data with new materials and total
+    setFormData(prev => {
+      const amount = parseFloat(prev.amount) || 0;
+      const taxAmount = parseFloat(prev.tax_amount) || 0;
+      const materialsPrice = totalMaterialsPrice;
       
       return {
         ...prev,
         materials: materials,
-        total_materials_price: materialsTotal,
-        total_amount: totalAmount
+        total_materials_price: totalMaterialsPrice.toFixed(2),
+        // Recalculate total to include materials
+        total_amount: (amount + taxAmount + materialsPrice).toFixed(2)
       };
     });
   };
@@ -598,8 +627,13 @@ export default function InvoiceDetailPage({ params }) {
                       </div>
                       
                       <div className="p-2">
-                        <h3 className="text-sm font-medium text-white/60 mb-2">Betrag</h3>
+                        <h3 className="text-sm font-medium text-white/60 mb-2">Dienstleistung</h3>
                         <p className="text-white">€{parseFloat(invoice.amount).toFixed(2)}</p>
+                      </div>
+                      
+                      <div className="p-2">
+                        <h3 className="text-sm font-medium text-white/60 mb-2">Materialien</h3>
+                        <p className="text-white">€{parseFloat(invoice.total_materials_price || 0).toFixed(2)}</p>
                       </div>
                       
                       <div className="p-2">
@@ -609,7 +643,7 @@ export default function InvoiceDetailPage({ params }) {
                       
                       <div className="p-2">
                         <h3 className="text-sm font-medium text-white/60 mb-2">Gesamtbetrag</h3>
-                        <p className="text-white font-medium">€{parseFloat(invoice.total_amount).toFixed(2)}</p>
+                        <p className="text-white font-medium text-lg">€{parseFloat(invoice.total_amount).toFixed(2)}</p>
                       </div>
                     </div>
                     
