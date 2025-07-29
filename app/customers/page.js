@@ -111,7 +111,7 @@ export default function CustomersPage() {
                   </div>
                   <div className="flex gap-4 justify-end">
                     <button onClick={() => router.push(`/customers/${c.id}`)} className="text-[#ffcb00]">Details</button>
-                    <button onClick={() => router.push(`/appointments/new?customer=${c.id}`)} className="text-[#ffcb00]">Termin</button>
+                    <button onClick={() => router.push(`/appointments/new?customer_id=${c.id}`)} className="text-[#ffcb00]">Termin</button>
                     <button disabled={processingCustomer===c.id} onClick={() => handleDelete(c.id, c.name)} className="text-red-400">{processingCustomer===c.id?'…':'Löschen'}</button>
                   </div>
                 </div>
