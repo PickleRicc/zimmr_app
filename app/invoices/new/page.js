@@ -220,9 +220,19 @@ function InvoicePageContent() {
     setFormData(prev => {
       const updatedData = { ...prev, [name]: newValue };
       
-      // Special handling for VAT exempt and amount changes
+      // Special handling for VAT exempt, amount, and tax_amount changes
       if (name === 'vat_exempt' || name === 'amount') {
         return handleVatChange(updatedData);
+      }
+      
+      // Special handling for manual tax_amount changes - recalculate total
+      if (name === 'tax_amount') {
+        const amount = parseFloat(updatedData.amount) || 0;
+        const materialTotal = parseFloat(updatedData.total_materials_price) || 0;
+        const taxAmount = parseFloat(updatedData.tax_amount) || 0;
+        const subtotal = amount + materialTotal;
+        updatedData.total_amount = (subtotal + taxAmount).toFixed(2);
+        return updatedData;
       }
       
       // If customer changes, potentially clear appointment selection or update available appointments
@@ -387,16 +397,18 @@ function InvoicePageContent() {
     }
 
     // Ensure total amount calculation is correct before submission
-     const amount = parseFloat(formData.amount) || 0;
-     let taxAmount = parseFloat(formData.tax_amount) || 0;
-     if (formData.vat_exempt) {
-         taxAmount = 0; // Ensure tax is 0 if exempt
-     } else if (Math.abs(taxAmount - amount * 0.19) > 0.001) {
-         // Optional: Recalculate tax if it seems manually changed and doesn't match 19%
-         // taxAmount = amount * 0.19;
-         console.warn("Tax amount might not be 19% of net amount.");
-     }
-     const totalAmount = amount + taxAmount;
+   const amount = parseFloat(formData.amount) || 0;
+   const materialsTotal = parseFloat(formData.total_materials_price) || 0;
+   const subtotal = amount + materialsTotal;
+   let taxAmount = parseFloat(formData.tax_amount) || 0;
+   if (formData.vat_exempt) {
+       taxAmount = 0; // Ensure tax is 0 if exempt
+   } else if (Math.abs(taxAmount - subtotal * 0.19) > 0.001) {
+       // Optional: Recalculate tax if it seems manually changed and doesn't match 19% of subtotal
+       // taxAmount = subtotal * 0.19;
+       console.warn("Tax amount might not be 19% of subtotal (amount + materials).");
+   }
+   const totalAmount = subtotal + taxAmount;
 
 
     try {
@@ -515,7 +527,7 @@ function InvoicePageContent() {
         // Find the selected customer's details (use invoiceData.customer_id)
         console.log('Looking for customer with ID:', invoiceData.customer_id);
         console.log('Available customers:', customers);
-        const selectedCustomer = customers.find(c => c.id === parseInt(invoiceData.customer_id));
+        const selectedCustomer = customers.find(c => String(c.id) === String(invoiceData.customer_id));
         console.log('Selected customer:', selectedCustomer);
         
         if (!selectedCustomer) {
@@ -526,10 +538,10 @@ function InvoicePageContent() {
         const documentDataForPdf = {
             ...invoiceData, // Base data from the API response
             // Add/override details needed specifically for the PDF that might not be in invoiceData
-            customer_name: selectedCustomer?.name || 'N/A',
+            customer_name: selectedCustomer?.name || 'Kunde',
             customer_email: selectedCustomer?.email || '',
             customer_phone: selectedCustomer?.phone || '',
-            customer_address: selectedCustomer?.address || '',
+            customer_address: selectedCustomer?.address || 'Adresse nicht verfügbar',
             // Ensure amounts are formatted as needed by PDF generator
             amount: parseFloat(invoiceData.amount || 0).toFixed(2),
             tax_amount: parseFloat(invoiceData.tax_amount || 0).toFixed(2),
@@ -948,46 +960,46 @@ function InvoicePageContent() {
                     <label htmlFor="total_amount" className="block text-sm font-medium mb-1 text-gray-300">
                       Gesamtbetrag (Brutto) *
                     </label>
-                    <input
-                      id="total_amount"
-                      type="number"
-                      name="total_amount"
-                      value={formData.total_amount}
-                      readOnly // Always calculated
-                      step="0.01"
-                      min="0"
-                      className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none text-white font-semibold" // Clearly indicate read-only/calculated
-                      required
-                      disabled={submitting} // Technically covered by readOnly, but good practice
-                      placeholder="0.00"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Automatisch berechnet (Betrag + Steuer).
-                    </p>
-                  </div>
+                     <input
+                       id="total_amount"
+                       type="number"
+                       name="total_amount"
+                       value={formData.total_amount}
+                       readOnly // Always calculated
+                       step="0.01"
+                       min="0"
+                       className="w-full bg-gray-900/60 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none text-white font-semibold"
+                       required
+                       disabled={submitting}
+                       placeholder="0.00"
+                     />
+                     <p className="text-xs text-gray-400 mt-1">
+                       Automatisch berechnet (Betrag + Materialien + Steuer).
+                     </p>
+                   </div>
 
-                  {/* Materials Section */}
-                  <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-white/10">
-                    <h3 className="text-lg font-semibold mb-3 text-gray-300">Materialien und Dienstleistungen</h3>
-                    <MaterialSelector
-                      selectedMaterials={formData.materials}
-                      onChange={handleMaterialsChange}
-                    />
-                    {/* Materials Total */}
-                    <div className="mt-4 flex justify-end">
-                      <div className="bg-[#ffcb00] border border-[#ffcb00]/50 rounded-xl px-6 py-3 inline-flex items-center">
-                        <span className="text-sm font-medium text-black">Materialkosten:</span>
-                        <span className="ml-4 text-lg font-semibold text-black">€{calculateMaterialsTotal()}</span>
-                      </div>
-                    </div>
-                  </div>
+                   {/* Materials Section */}
+                   <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-white/10">
+                     <h3 className="text-lg font-semibold mb-3 text-gray-300">Materialien und Dienstleistungen</h3>
+                     <MaterialSelector
+                       selectedMaterials={formData.materials}
+                       onChange={handleMaterialsChange}
+                     />
+                     {/* Materials Total */}
+                     <div className="mt-4 flex justify-end">
+                       <div className="bg-[#ffcb00] border border-[#ffcb00]/50 rounded-xl px-6 py-3 inline-flex items-center">
+                         <span className="text-sm font-medium text-black">Materialkosten:</span>
+                         <span className="ml-4 text-lg font-semibold text-black">€{calculateMaterialsTotal()}</span>
+                       </div>
+                     </div>
+                   </div>
 
-                  {/* Notes */}
-                  <div className="col-span-1 md:col-span-2">
-                    <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
-                      Notizen / Service-Beschreibung
-                    </label>
-                    <textarea
+                   {/* Notes */}
+                   <div className="col-span-1 md:col-span-2">
+                     <label htmlFor="notes" className="block text-sm font-medium mb-1 text-gray-300">
+                       Notizen / Service-Beschreibung
+                     </label>
+                     <textarea
                       id="notes"
                       name="notes"
                       value={formData.notes}

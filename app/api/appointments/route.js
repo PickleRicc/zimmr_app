@@ -71,6 +71,38 @@ export async function GET(req) {
       return handleApiError(`Error fetching appointments: ${error.message}`, 500);
     }
     
+    // If we have appointments, fetch customer data for each appointment
+    if (data && data.length > 0) {
+      const customerIds = data
+        .filter(appointment => appointment.customer_id)
+        .map(appointment => appointment.customer_id);
+        
+      if (customerIds.length > 0) {
+        const { data: customers, error: custError } = await supabase
+          .from('customers')
+          .select('id, name, first_name, last_name, email')
+          .in('id', customerIds);
+          
+        if (custError) {
+          console.error('Appointments API - Error fetching customer data:', custError);
+          // Don't fail the whole request, just log the error
+        } else {
+          // Create customer lookup map
+          const customerMap = {};
+          customers?.forEach(customer => {
+            customerMap[customer.id] = customer;
+          });
+          
+          // Attach customer data to appointments
+          data.forEach(appointment => {
+            if (appointment.customer_id) {
+              appointment.customers = customerMap[appointment.customer_id] || null;
+            }
+          });
+        }
+      }
+    }
+    
     return handleApiSuccess(data, 'Appointments retrieved successfully');
   } catch (err) {
     console.error('Appointments API - GET error:', err.message);

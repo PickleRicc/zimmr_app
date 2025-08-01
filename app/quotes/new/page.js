@@ -53,6 +53,7 @@ export default function NewQuotePage() {
   
   const [customers, setCustomers] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [filteredAppointments, setFilteredAppointments] = useState([]);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingAppointments, setLoadingAppointments] = useState(false);
@@ -174,7 +175,13 @@ export default function NewQuotePage() {
       
       // Extract data, supporting both new standardized and legacy formats
       const appointmentsData = responseData.data !== undefined ? responseData.data : responseData;
-      setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
+      const appointmentsArray = Array.isArray(appointmentsData) ? appointmentsData : [];
+      
+
+      
+      setAppointments(appointmentsArray);
+      // Initialize filtered appointments with all appointments
+      setFilteredAppointments(appointmentsArray);
       
       // Log any API message
       if (responseData.message) {
@@ -237,9 +244,41 @@ export default function NewQuotePage() {
     }
   };
 
+  const handleCustomerChange = (e) => {
+    const customerId = e.target.value;
+  
+    // Update form data with selected customer
+    setFormData(prev => ({
+      ...prev,
+      customer_id: customerId,
+      // Clear appointment selection when customer changes
+      appointment_id: ''
+    }));
+  
+    // Clear selected appointment
+    setSelectedAppointment(null);
+  
+    // Filter appointments by selected customer
+    if (customerId) {
+      const customerAppointments = appointments.filter(appointment => 
+        String(appointment.customer_id) === String(customerId)
+      );
+      setFilteredAppointments(customerAppointments);
+    } else {
+      // If no customer selected, show all appointments
+      setFilteredAppointments(appointments);
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    
+  
+    // Handle customer selection with appointment filtering
+    if (name === 'customer_id') {
+      handleCustomerChange(e);
+      return;
+    }
+  
     // For checkbox handling (e.g., vat_exempt)
     if (type === 'checkbox') {
       setFormData(prev => ({ ...prev, [name]: checked }));
@@ -249,9 +288,10 @@ export default function NewQuotePage() {
       const isExempt = type === 'checkbox' ? checked : value === 'true';
       const amount = parseFloat(formData.amount) || 0;
       const materialsCost = parseFloat(formData.total_materials_price) || 0;
-      const tax = isExempt ? 0 : amount * 0.19;
-      const total = amount + tax + materialsCost;
-      
+      const subtotal = amount + materialsCost;
+      const tax = isExempt ? 0 : subtotal * 0.19;
+      const total = subtotal + tax;
+    
       setFormData(prev => ({
         ...prev,
         vat_exempt: isExempt,
@@ -260,14 +300,15 @@ export default function NewQuotePage() {
       }));
       return;
     }
-    
+  
     // Calculate tax and total when amount changes
     if (name === 'amount') {
       const amount = parseFloat(value) || 0;
       const materialsCost = parseFloat(formData.total_materials_price) || 0;
-      const tax = formData.vat_exempt ? 0 : amount * 0.19;
-      const total = amount + tax + materialsCost;
-      
+      const subtotal = amount + materialsCost;
+      const tax = formData.vat_exempt ? 0 : subtotal * 0.19;
+      const total = subtotal + tax;
+    
       setFormData(prev => ({
         ...prev,
         [name]: value,
@@ -276,7 +317,7 @@ export default function NewQuotePage() {
       }));
       return;
     }
-    
+  
     // For all other fields, simply update the value
     setFormData(prev => ({
       ...prev,
@@ -316,10 +357,11 @@ export default function NewQuotePage() {
     console.log('Materials array:', materialsArray);
     console.log('Total materials price calculated:', totalMaterialsPrice);
     
-    // Update the amount and tax calculation
+    // Update the amount and tax calculation with correct logic
     const amount = parseFloat(formData.amount) || 0;
-    const tax = formData.vat_exempt ? 0 : amount * 0.19;
-    const total = amount + tax + totalMaterialsPrice;
+    const subtotal = amount + totalMaterialsPrice;
+    const tax = formData.vat_exempt ? 0 : subtotal * 0.19;
+    const total = subtotal + tax;
     
     console.log('Updating form data with materials total:', totalMaterialsPrice.toFixed(2));
     
@@ -329,6 +371,7 @@ export default function NewQuotePage() {
         ...prev,
         materials: materialsArray,
         total_materials_price: totalMaterialsPrice.toFixed(2),
+        tax_amount: tax.toFixed(2),
         total_amount: total.toFixed(2)
       };
       console.log('New form state:', newState);
@@ -351,7 +394,7 @@ export default function NewQuotePage() {
       const updates = {
         appointment_id: appointmentId,
         customer_id: String(appointment.customer_id),
-        service_date: appointment.date ? new Date(appointment.date).toISOString().split('T')[0] : '',
+        service_date: appointment.scheduled_at ? new Date(appointment.scheduled_at).toISOString().split('T')[0] : '',
       };
       
       // Add location if available
@@ -359,10 +402,19 @@ export default function NewQuotePage() {
         updates.location = appointment.location;
       }
       
+
+      
       // Update form state
       setFormData(prev => ({ ...prev, ...updates }));
+      
+      // Filter appointments by the selected customer to maintain consistency
+      const customerAppointments = appointments.filter(apt => 
+        String(apt.customer_id) === String(appointment.customer_id)
+      );
+      setFilteredAppointments(customerAppointments);
     } else {
-      // If appointment is deselected, just update the appointment_id field
+      // If appointment is deselected, show all appointments again
+      setFilteredAppointments(appointments);
       setFormData(prev => ({
         ...prev,
         appointment_id: appointmentId,
@@ -612,11 +664,34 @@ export default function NewQuotePage() {
                       disabled={loadingAppointments || success}
                     >
                       <option value="">-- Termin auswählen --</option>
-                      {appointments.map(appointment => (
-                        <option key={appointment.id} value={appointment.id}>
-                          {formatAppointmentDate(appointment.date)} - {appointment.customer_name || 'Kein Kundenname'}
+                      {formData.customer_id && filteredAppointments.length === 0 ? (
+                        <option value="" disabled>
+                          Keine Termine für ausgewählten Kunden
                         </option>
-                      ))}
+                      ) : (
+                        filteredAppointments.map(appointment => {
+                          // Get customer name with fallback logic
+                          let customerName = 'Kein Kundenname';
+                          if (appointment.customers) {
+                            customerName = appointment.customers.name || 
+                                         [appointment.customers.first_name, appointment.customers.last_name].filter(Boolean).join(' ').trim() ||
+                                         'Kein Kundenname';
+                          } else {
+                            // Fallback: find customer in customers array
+                            const customer = customers.find(c => c.id === appointment.customer_id);
+                            if (customer) {
+                              customerName = customer.name || 
+                                           [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() ||
+                                           'Kein Kundenname';
+                            }
+                          }
+                          return (
+                            <option key={appointment.id} value={appointment.id}>
+                              {formatAppointmentDate(appointment.scheduled_at)} - {customerName}
+                            </option>
+                          );
+                        })
+                      )}
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
                       <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
@@ -630,6 +705,11 @@ export default function NewQuotePage() {
                       Termine werden geladen...
                     </p>
                   )}
+                  {!loadingAppointments && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      💡 Tipp: Wählen Sie einen Termin aus, um automatisch den Kunden zu setzen, oder wählen Sie zuerst einen Kunden, um nur dessen Termine anzuzeigen.
+                    </p>
+                  )}
                 </div>
 
                 {/* Selected Appointment Card */}
@@ -638,10 +718,27 @@ export default function NewQuotePage() {
                     <h3 className="font-medium mb-2">Ausgewählter Termin</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-gray-400">Datum:</span> {formatAppointmentDate(selectedAppointment.date)}
+                        <span className="text-gray-400">Datum:</span> {formatAppointmentDate(selectedAppointment.scheduled_at)}
                       </div>
                       <div>
-                        <span className="text-gray-400">Kunde:</span> {selectedAppointment.customer_name || 'Nicht angegeben'}
+                        <span className="text-gray-400">Kunde:</span> {
+                          (() => {
+                            // First try to get customer from appointment.customers
+                            if (selectedAppointment.customers) {
+                              return selectedAppointment.customers.name || 
+                                     [selectedAppointment.customers.first_name, selectedAppointment.customers.last_name].filter(Boolean).join(' ').trim() ||
+                                     'Nicht angegeben';
+                            }
+                            // Fallback: find customer in customers array
+                            const customer = customers.find(c => c.id === selectedAppointment.customer_id);
+                            if (customer) {
+                              return customer.name || 
+                                     [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() ||
+                                     'Nicht angegeben';
+                            }
+                            return 'Nicht angegeben';
+                          })()
+                        }
                       </div>
                       <div>
                         <span className="text-gray-400">Ort:</span> {selectedAppointment.location || 'Nicht angegeben'}
@@ -736,7 +833,7 @@ export default function NewQuotePage() {
                         id="vat_exempt"
                         name="vat_exempt"
                         checked={formData.vat_exempt}
-                        onChange={(e) => setFormData({...formData, vat_exempt: e.target.checked})}
+                        onChange={handleChange}
                         className="h-5 w-5 text-[#ffcb00] focus:ring-[#ffcb00] border-white/30 rounded"
                         disabled={success}
                       />
@@ -783,15 +880,15 @@ export default function NewQuotePage() {
                           type="number"
                           name="tax_amount"
                           value={formData.tax_amount}
-                          onChange={handleChange}
                           step="0.01"
                           min="0"
                           className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                          readOnly
                           disabled={success}
                         />
                       </div>
                       <p className="text-xs text-gray-400 mt-1">
-                        Automatisch berechnet als 19% des Betrags
+                        Automatisch berechnet als 19% von (Betrag + Materialien)
                       </p>
                     </div>
                   )}
@@ -819,7 +916,7 @@ export default function NewQuotePage() {
                       />
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      Automatisch berechnet aus Betrag + Steuer
+                       Automatisch berechnet aus Betrag + Materialien + Steuer
                     </p>
                   </div>
                   
