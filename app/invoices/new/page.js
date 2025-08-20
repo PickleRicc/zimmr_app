@@ -29,7 +29,18 @@ function InvoicePageContent() {
     type: 'invoice',
     appointment_id: '',
     materials: [], // Array to store selected materials
-    total_materials_price: '0.00' // Total price of materials
+    total_materials_price: '0.00', // Total price of materials
+    // German compliance fields
+    invoice_type: 'final', // 'final', 'partial', 'down_payment'
+    tax_number: '',
+    vat_id: '',
+    small_business_exempt: false,
+    payment_terms_days: 14,
+    issue_date: new Date().toISOString().split('T')[0],
+    service_period_start: '',
+    service_period_end: '',
+    reverse_charge: false,
+    legal_footer_text: ''
   });
 
   const [customers, setCustomers] = useState([]);
@@ -829,6 +840,31 @@ function InvoicePageContent() {
                     </select>
                   </div>
 
+                  {/* Invoice Type (German Compliance) */}
+                  {formData.type === 'invoice' && (
+                    <div>
+                      <label htmlFor="invoice_type" className="block text-sm font-medium mb-1 text-gray-300">
+                        Rechnungsart *
+                      </label>
+                      <select
+                        id="invoice_type"
+                        name="invoice_type"
+                        value={formData.invoice_type}
+                        onChange={handleChange}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                        required
+                        disabled={submitting}
+                      >
+                        <option value="final">Schlussrechnung</option>
+                        <option value="partial">Teilrechnung</option>
+                        <option value="down_payment">Anzahlungsrechnung</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Wählen Sie die Art der Rechnung gemäß deutschen Steuervorschriften.
+                      </p>
+                    </div>
+                  )}
+
                    {/* Due Date (Relevant for Invoice/Draft) */}
                    {formData.type !== 'quote' && (
                         <div>
@@ -909,8 +945,129 @@ function InvoicePageContent() {
                     </p>
                   </div>
 
-                  {/* VAT Exempt Toggle */}
-                    <div>
+                  {/* German Tax Compliance Section */}
+                  <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-white/10">
+                    <h3 className="text-lg font-semibold mb-3 text-gray-300">Deutsche Steuervorschriften</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      {/* Small Business Exemption */}
+                      <div>
+                        <label htmlFor="small_business_exempt" className="block text-sm font-medium mb-1 text-gray-300">
+                          Kleinunternehmerregelung
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer mt-2 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 h-[42px]">
+                          <input
+                            id="small_business_exempt"
+                            type="checkbox"
+                            name="small_business_exempt"
+                            checked={formData.small_business_exempt}
+                            onChange={handleChange}
+                            className="w-4 h-4 accent-[#ffcb00] disabled:opacity-50"
+                            disabled={submitting}
+                          />
+                          <span className="text-sm font-medium text-gray-300">§19 UStG anwenden</span>
+                        </label>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Kleinunternehmerregelung - keine Umsatzsteuer.
+                        </p>
+                      </div>
+
+                      {/* Issue Date */}
+                      <div>
+                        <label htmlFor="issue_date" className="block text-sm font-medium mb-1 text-gray-300">
+                          Rechnungsdatum *
+                        </label>
+                        <input
+                          id="issue_date"
+                          type="date"
+                          name="issue_date"
+                          value={formData.issue_date}
+                          onChange={handleChange}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                          required
+                          disabled={submitting}
+                        />
+                      </div>
+
+                      {/* Payment Terms */}
+                      <div>
+                        <label htmlFor="payment_terms_days" className="block text-sm font-medium mb-1 text-gray-300">
+                          Zahlungsziel (Tage)
+                        </label>
+                        <input
+                          id="payment_terms_days"
+                          type="number"
+                          name="payment_terms_days"
+                          value={formData.payment_terms_days}
+                          onChange={handleChange}
+                          min="1"
+                          max="365"
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                          disabled={submitting}
+                          placeholder="14"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">
+                          Standard: 14 Tage nach Rechnungsdatum.
+                        </p>
+                      </div>
+
+                      {/* Service Period */}
+                      <div>
+                        <label htmlFor="service_period_start" className="block text-sm font-medium mb-1 text-gray-300">
+                          Leistungszeitraum Start
+                        </label>
+                        <input
+                          id="service_period_start"
+                          type="date"
+                          name="service_period_start"
+                          value={formData.service_period_start}
+                          onChange={handleChange}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                          disabled={submitting}
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="service_period_end" className="block text-sm font-medium mb-1 text-gray-300">
+                          Leistungszeitraum Ende
+                        </label>
+                        <input
+                          id="service_period_end"
+                          type="date"
+                          name="service_period_end"
+                          value={formData.service_period_end}
+                          onChange={handleChange}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                          disabled={submitting}
+                        />
+                      </div>
+
+                      {/* Reverse Charge */}
+                      <div>
+                        <label htmlFor="reverse_charge" className="block text-sm font-medium mb-1 text-gray-300">
+                          Reverse Charge
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer mt-2 bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 h-[42px]">
+                          <input
+                            id="reverse_charge"
+                            type="checkbox"
+                            name="reverse_charge"
+                            checked={formData.reverse_charge}
+                            onChange={handleChange}
+                            className="w-4 h-4 accent-[#ffcb00] disabled:opacity-50"
+                            disabled={submitting}
+                          />
+                          <span className="text-sm font-medium text-gray-300">Reverse Charge Verfahren</span>
+                        </label>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Für B2B EU-Geschäfte mit USt-IdNr.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VAT Exempt Toggle (Legacy - now replaced by small_business_exempt) */}
+                    <div style={{display: 'none'}}>
                         <label htmlFor="vat_exempt" className="block text-sm font-medium mb-1 text-gray-300">
                           Steueroption
                         </label>
@@ -919,7 +1076,7 @@ function InvoicePageContent() {
                             id="vat_exempt"
                             type="checkbox"
                             name="vat_exempt"
-                            checked={formData.vat_exempt}
+                            checked={formData.vat_exempt || formData.small_business_exempt}
                             onChange={handleChange}
                             className="w-4 h-4 accent-[#ffcb00] disabled:opacity-50"
                             disabled={submitting}
@@ -932,10 +1089,10 @@ function InvoicePageContent() {
                     </div>
 
 
-                  {/* Tax Amount (Calculated or 0) */}
+                  {/* Tax Amount (Calculated based on German rules) */}
                    <div>
                       <label htmlFor="tax_amount" className="block text-sm font-medium mb-1 text-gray-300">
-                        Steuerbetrag {formData.vat_exempt ? '(Steuerfrei)' : '(19% USt)'}
+                        Steuerbetrag {formData.small_business_exempt || formData.reverse_charge ? '(Steuerfrei)' : '(19% USt)'}
                       </label>
                        <input
                            id="tax_amount"
@@ -946,11 +1103,13 @@ function InvoicePageContent() {
                            step="0.01"
                            min="0"
                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50 bg-opacity-70" // Slightly dimmer if calculated
-                           disabled={submitting || formData.vat_exempt} // Disable if exempt
-                           readOnly={!formData.vat_exempt} // ReadOnly if standard VAT to encourage relying on calculation, but allow override if needed
+                           disabled={submitting || formData.small_business_exempt || formData.reverse_charge} // Disable if exempt
+                           readOnly={!(formData.small_business_exempt || formData.reverse_charge)} // ReadOnly if standard VAT to encourage relying on calculation, but allow override if needed
                        />
                        <p className="text-xs text-gray-400 mt-1">
-                           {formData.vat_exempt ? 'Auf 0.00 gesetzt' : 'Automatisch berechnet (19% Standard).'}
+                           {formData.small_business_exempt ? 'Kleinunternehmerregelung §19 UStG - keine USt' : 
+                            formData.reverse_charge ? 'Reverse Charge - keine USt' : 
+                            'Automatisch berechnet (19% Standard).'}
                        </p>
                    </div>
 

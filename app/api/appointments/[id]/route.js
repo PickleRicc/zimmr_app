@@ -9,6 +9,7 @@ import {
   handleApiError,
   handleApiSuccess
 } from '../../../../lib/api-utils';
+import { createAutoInvoice, canCreateAutoInvoice } from '../../../../lib/utils/autoInvoiceCreator';
 
 const ROUTE_NAME = 'Appointments Detail API';
 const supabase = createSupabaseClient(ROUTE_NAME);
@@ -165,7 +166,33 @@ export async function PUT(req, { params }) {
     }
     
     console.log(`${ROUTE_NAME} - Successfully updated appointment: ${id}`);
-    return handleApiSuccess(data, 'Appointment updated successfully');
+    
+    // Auto-create invoice if appointment was just completed
+    let invoiceResult = null;
+    if (body.status === 'completed' && canCreateAutoInvoice(data)) {
+      console.log(`${ROUTE_NAME} - Appointment completed, creating auto-invoice`);
+      invoiceResult = await createAutoInvoice(data, craftsmanId);
+      
+      if (invoiceResult.success) {
+        console.log(`${ROUTE_NAME} - Auto-invoice created successfully: ${invoiceResult.invoice.id}`);
+      } else {
+        console.error(`${ROUTE_NAME} - Auto-invoice creation failed:`, invoiceResult.error);
+        // Don't fail the appointment update if invoice creation fails
+      }
+    }
+    
+    // Include invoice creation result in response
+    const responseData = {
+      appointment: data,
+      autoInvoice: invoiceResult
+    };
+    
+    let successMessage = 'Appointment updated successfully';
+    if (invoiceResult?.success) {
+      successMessage += '. Rechnung automatisch erstellt';
+    }
+    
+    return handleApiSuccess(responseData, successMessage);
   } catch (err) {
     console.error(`${ROUTE_NAME} - PUT error:`, err);
     return handleApiError(err, 'Server error', 500, ROUTE_NAME);

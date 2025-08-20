@@ -295,18 +295,28 @@ export default function AppointmentDetailPage() {
       // Parse response with standardized format
       const response = await res.json();
       
-      // Use the API's success message if available
-      setSuccess(response.message || 'Der Termin wurde erfolgreich abgeschlossen!');
-
-      // Redirect to the new invoice page with appointment data
-      setTimeout(() => {
-        // Prepare appointment data for invoice creation with correct parameter names
-        const appointmentData = {
-          appointment_id: appointment.id,
-          customer_id: appointment.customer_id,
-          amount: servicePrice, // Use 'amount' instead of 'price'
-          service_date: appointment.scheduled_at ? appointment.scheduled_at.split('T')[0] : '',
-          location: appointment.location || '',
+      // Check if auto-invoice was created
+      if (response.data?.autoInvoice?.success) {
+        const invoiceId = response.data.autoInvoice.invoice.id;
+        setSuccess(`Der Termin wurde erfolgreich abgeschlossen! Rechnung automatisch erstellt (ID: ${invoiceId}). Sie können die Rechnung in der Rechnungsübersicht bearbeiten und versenden.`);
+        
+        // Redirect to the created invoice instead of creating a new one
+        setTimeout(() => {
+          router.push(`/invoices/${invoiceId}`);
+        }, 3000);
+      } else {
+        // Use the API's success message if available
+        setSuccess(response.message || 'Der Termin wurde erfolgreich abgeschlossen!');
+        
+        // If no auto-invoice was created, redirect to manual invoice creation
+        setTimeout(() => {
+          // Prepare appointment data for invoice creation with correct parameter names
+          const appointmentData = {
+            appointment_id: appointment.id,
+            customer_id: appointment.customer_id,
+            amount: servicePrice, // Use 'amount' instead of 'price'
+            service_date: appointment.scheduled_at ? appointment.scheduled_at.split('T')[0] : '',
+            location: appointment.location || '',
           notes: notes || appointment.notes || '',
           from_appointment: 'true' // Ensure string value
         };
@@ -314,9 +324,10 @@ export default function AppointmentDetailPage() {
         // Create query string with appointment data
         const queryString = new URLSearchParams(appointmentData).toString();
 
-        // Redirect to new invoice page with appointment data
-        router.push(`/invoices/new?${queryString}`);
-      }, 1000);
+          // Redirect to new invoice page with appointment data
+          router.push(`/invoices/new?${queryString}`);
+        }, 1000);
+      }
     } catch (err) {
       console.error('Error completing appointment:', err);
       setError(err.message || 'Fehler beim Abschließen des Termins. Bitte versuchen Sie es erneut.');

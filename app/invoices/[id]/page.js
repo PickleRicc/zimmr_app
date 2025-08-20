@@ -111,7 +111,18 @@ export default function InvoiceDetailPage({ params }) {
         type: data.type || 'invoice',
         appointment_id: data.appointment_id || '',
         materials: data.materials || [],
-        total_materials_price: data.total_materials_price || '0.00'
+        total_materials_price: data.total_materials_price || '0.00',
+        // German compliance fields
+        invoice_type: data.invoice_type || 'final',
+        tax_number: data.tax_number || '',
+        vat_id: data.vat_id || '',
+        small_business_exempt: data.small_business_exempt || false,
+        payment_terms_days: data.payment_terms_days || 14,
+        issue_date: data.issue_date ? new Date(data.issue_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        service_period_start: data.service_period_start ? new Date(data.service_period_start).toISOString().split('T')[0] : '',
+        service_period_end: data.service_period_end ? new Date(data.service_period_end).toISOString().split('T')[0] : '',
+        reverse_charge: data.reverse_charge || false,
+        legal_footer_text: data.legal_footer_text || ''
       });
       
       // If there's an appointment_id, fetch the appointment details
@@ -381,7 +392,7 @@ export default function InvoiceDetailPage({ params }) {
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString();
+    return new Date(dateString).toLocaleDateString('de-DE');
   };
 
   const getStatusBadgeClass = (status) => {
@@ -584,8 +595,16 @@ export default function InvoiceDetailPage({ params }) {
               ) : (
                 <div className="bg-[#2a2a2a]/70 backdrop-blur-md rounded-2xl shadow-xl border border-[#2a2a2a] overflow-hidden">
                   <div className="p-6">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-xl font-semibold text-[#ffcb00]">Rechnung #{invoice.invoice_number || invoice.id}</h2>
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-xl font-bold text-white">
+                        {invoice.invoice_number_formatted ? `Rechnung Nr. ${invoice.invoice_number_formatted}` : `Rechnung #${invoice.id}`}
+                        {invoice.invoice_type && invoice.invoice_type !== 'final' && (
+                          <span className="text-sm text-white/60 ml-2">
+                            ({invoice.invoice_type === 'partial' ? 'Teilrechnung' : 
+                              invoice.invoice_type === 'down_payment' ? 'Anzahlungsrechnung' : ''})
+                          </span>
+                        )}
+                      </h2>
                       <span className={`px-3 py-1 rounded-xl text-sm font-medium ${getStatusBadgeClass(invoice.status)}`}>
                         {invoice.status === 'overdue' ? 'ÜBERFÄLLIG' : 
                          invoice.status === 'paid' ? 'BEZAHLT' : 
@@ -613,7 +632,7 @@ export default function InvoiceDetailPage({ params }) {
                       
                       <div className="p-2">
                         <h3 className="text-sm font-medium text-white/60 mb-2">Rechnungsdatum</h3>
-                        <p className="text-white">{formatDate(invoice.created_at)}</p>
+                        <p className="text-white">{formatDate(invoice.issue_date || invoice.created_at)}</p>
                       </div>
                       
                       <div className="p-2">
@@ -622,8 +641,14 @@ export default function InvoiceDetailPage({ params }) {
                       </div>
                       
                       <div className="p-2">
-                        <h3 className="text-sm font-medium text-white/60 mb-2">Leistungsdatum</h3>
-                        <p className="text-white">{formatDate(invoice.service_date)}</p>
+                        <h3 className="text-sm font-medium text-white/60 mb-2">Leistungszeitraum</h3>
+                        <p className="text-white">
+                          {invoice.service_period_start && invoice.service_period_end ? (
+                            `${formatDate(invoice.service_period_start)} - ${formatDate(invoice.service_period_end)}`
+                          ) : (
+                            formatDate(invoice.service_date || invoice.service_period_start)
+                          )}
+                        </p>
                       </div>
                       
                       <div className="p-2">
@@ -645,6 +670,45 @@ export default function InvoiceDetailPage({ params }) {
                         <h3 className="text-sm font-medium text-white/60 mb-2">Gesamtbetrag</h3>
                         <p className="text-white font-medium text-lg">€{parseFloat(invoice.total_amount).toFixed(2)}</p>
                       </div>
+                      
+                      {/* German Tax Information */}
+                      {(invoice.tax_number || invoice.vat_id) && (
+                        <div className="col-span-1 md:col-span-2 p-2 border-t border-[#2a2a2a] mt-4">
+                          <h3 className="text-sm font-medium text-white/60 mb-2">Steuerliche Angaben</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {invoice.tax_number && (
+                              <div>
+                                <span className="text-white/60 text-sm">Steuernummer: </span>
+                                <span className="text-white">{invoice.tax_number}</span>
+                              </div>
+                            )}
+                            {invoice.vat_id && (
+                              <div>
+                                <span className="text-white/60 text-sm">USt-IdNr.: </span>
+                                <span className="text-white">{invoice.vat_id}</span>
+                              </div>
+                            )}
+                            {invoice.small_business_exempt && (
+                              <div className="col-span-1 md:col-span-2">
+                                <span className="text-[#ffcb00] text-sm">§19 UStG - Kleinunternehmerregelung</span>
+                              </div>
+                            )}
+                            {invoice.reverse_charge && (
+                              <div className="col-span-1 md:col-span-2">
+                                <span className="text-[#ffcb00] text-sm">Reverse Charge Verfahren</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Payment Terms */}
+                      {invoice.payment_terms_days && (
+                        <div className="col-span-1 md:col-span-2 p-2">
+                          <h3 className="text-sm font-medium text-white/60 mb-2">Zahlungsbedingungen</h3>
+                          <p className="text-white">Zahlbar ohne Abzug innerhalb von {invoice.payment_terms_days} Tagen</p>
+                        </div>
+                      )}
                     </div>
                     
                     {invoice.notes && (

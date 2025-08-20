@@ -1,112 +1,129 @@
 # 🎯 Daily Priorities - August 20, 2025
-## Quote AI System Completion Focus
+## WEEK 2 Focus: Invoicing & Time Tracking Modules
 
-### 🚨 **CRITICAL - Must Fix Today**
+### 🚨 **CRITICAL - Must Complete Today**
 
-#### 1. **Fix Appointment Selection Bug** ⏰ 2-3 hours
-- **Issue**: Appointment dropdown not populating form fields
-- **Impact**: Core workflow broken - customers can't be auto-selected
-- **Action**: Debug console logs, fix data type mismatches, test form population
-- **Success Criteria**: Selecting appointment auto-fills customer, date, location
+## 🧾 **INVOICING MODULE** (Priority 1)
 
-#### 2. **Complete End-to-End Testing** ⏰ 1-2 hours
-- **Test Flow**: Appointment → Quote Creation → AI Suggestions → PDF Generation
-- **Verify**: All calculations, materials, tax, totals work correctly
-- **Check**: Geofencing triggers, location services, form validation
-- **Success Criteria**: Full quote workflow works without errors
+#### 1. **Invoice Creation Flow** ⏰ 2-3 hours
+- **Triggers**: Manual creation + auto-trigger after job completion
+- **Types**: Final invoice (default) + Partial/down payment invoice
+- **Action**: Create invoice form with German law compliance
+- **Success Criteria**: Can create both invoice types with proper triggers
 
-### 🔥 **HIGH PRIORITY - Complete Today**
+#### 2. **German Law Compliance Fields** ⏰ 2-3 hours
+- **Required Fields**: Invoice number, date, VAT logic, small business exemption
+- **Standards**: Per German tax law requirements
+- **Auto-generation**: Dynamic invoice numbering system
+- **Success Criteria**: All legally required fields auto-populated
 
-#### 3. **Add Upload Functionality** ⏰ 3-4 hours
-- **Feature**: Photo/sketch upload for quotes
-- **Requirements**: Support JPG, PNG, PDF files
-- **Integration**: Store in AWS Frankfurt (GDPR compliant)
-- **UI**: Drag-drop interface, preview thumbnails
-- **Success Criteria**: Can attach and view files in quotes
+#### 3. **Dunning/Reminder System** ⏰ 3-4 hours
+- **Logic**: 3-tier escalating reminder system
+- **Fees**: Interest calculation based on §288 BGB
+- **Templates**: Professional reminder templates in German
+- **Success Criteria**: Automated dunning with legal compliance
 
-#### 4. **Implement Dynamic Row Logic** ⏰ 1-2 hours
-- **Feature**: Auto-add empty rows in materials list
-- **Behavior**: New row appears when last row is filled
-- **UX**: Smooth addition/removal of line items
-- **Success Criteria**: Intuitive material entry experience
+#### 4. **Export System for Accountants** ⏰ 2-3 hours
+- **Format**: ZIP containing PDFs + CSV summary
+- **Retention**: 10-year storage (GoBD compliance)
+- **Storage**: AWS Frankfurt for GDPR compliance
+- **Success Criteria**: Monthly/yearly export functionality
 
-#### 5. **Add Quote Dispatch Options** ⏰ 2-3 hours
-- **Email Integration**: Send PDF via email
-- **WhatsApp Option**: Share quote link/PDF
-- **Save as Draft**: Store without sending
-- **Success Criteria**: Multiple sending options work
+## ⏱️ **TIME TRACKING MODULE** (Priority 2)
 
-### 📊 **MEDIUM PRIORITY - If Time Permits**
+#### 5. **Time Tracking UI** ⏰ 2-3 hours
+- **Features**: Start/Stop buttons + Manual entry option
+- **Interface**: Mobile-first design with large touch targets
+- **States**: Active tracking, paused, stopped with visual feedback
+- **Success Criteria**: Intuitive time tracking interface
 
-#### 6. **Historical Data Analysis** ⏰ 4-5 hours
-- **AI Enhancement**: Use past quotes for smarter suggestions
-- **Logic**: 30%+ frequency threshold for recommendations
-- **Database**: Query historical quote data
-- **Success Criteria**: AI suggests based on past patterns
+#### 6. **Smart Project Selection** ⏰ 2-3 hours
+- **Auto-detection**: Project selection by location/time context
+- **Logic**: GPS-based project matching + time-based suggestions
+- **Fallback**: Manual project selection dropdown
+- **Success Criteria**: Automatic project assignment works 80% of time
 
-#### 7. **Mobile Optimization Testing** ⏰ 1-2 hours
-- **Responsive Design**: Test on various screen sizes
-- **Touch Interface**: Ensure mobile-friendly interactions
-- **Performance**: Fast loading on mobile networks
-- **Success Criteria**: Smooth mobile experience
+#### 7. **Daily Log Management** ⏰ 2-3 hours
+- **View**: Daily summary with editable time entries
+- **Edit**: Modify start/end times, add notes, change projects
+- **Validation**: Prevent overlapping time entries
+- **Success Criteria**: Complete daily time management interface
+
+#### 8. **Integration with Invoice/Quote** ⏰ 1-2 hours
+- **Data Flow**: Time entries → Invoice line items
+- **Pre-fill**: Auto-populate quote estimates from historical time data
+- **Calculations**: Automatic labor cost calculations
+- **Success Criteria**: Seamless data flow between modules
 
 ### 🧪 **TESTING PRIORITIES**
 
-#### **Immediate Testing Needed:**
-1. **Appointment Selection**: Fix and verify form population
-2. **AI Suggestions**: Test with realistic German craftsman data
-3. **Calculations**: Verify all tax/total calculations
-4. **PDF Generation**: Ensure complete data in output
-5. **Geofencing**: Test with actual GPS coordinates
+#### **Invoice Module Testing:**
+1. **Invoice Creation**: Test manual and auto-trigger flows
+2. **German Compliance**: Verify all required fields and VAT calculations
+3. **Dunning System**: Test reminder escalation and fee calculations
+4. **Export Functions**: Verify ZIP/CSV generation for accountants
 
-#### **Test Data Setup:**
-- Create test appointments with real addresses
-- Add sample customers with complete data
-- Generate test materials with proper pricing
-- Set up realistic service scenarios
+#### **Time Tracking Testing:**
+1. **Timer Functions**: Test start/stop/pause functionality
+2. **Project Auto-Selection**: Verify GPS-based project matching
+3. **Daily Logs**: Test editing and validation of time entries
+4. **Integration**: Verify data flow to invoice/quote modules
 
 ### 📋 **Success Metrics for Today**
 
-**✅ Must Achieve:**
-- [ ] Appointment selection works 100%
-- [ ] Complete quote creation flow functional
-- [ ] PDF generation includes all data
-- [ ] AI suggestions provide relevant items
-- [ ] Tax calculations accurate
+**✅ Must Achieve (Invoicing):**
+- [ ] Invoice creation flow functional (manual + auto)
+- [ ] German law compliance fields implemented
+- [ ] Basic dunning system operational
+- [ ] Export functionality working
+
+**✅ Must Achieve (Time Tracking):**
+- [ ] Start/Stop timer interface working
+- [ ] Project auto-selection implemented
+- [ ] Daily log view functional
+- [ ] Integration with invoice module
 
 **🎯 Stretch Goals:**
-- [ ] Upload functionality implemented
-- [ ] Email dispatch working
-- [ ] Mobile optimization complete
-- [ ] Historical data integration
+- [ ] Advanced dunning templates
+- [ ] Historical time data analysis
+- [ ] Mobile optimization for time tracking
+- [ ] Advanced export filtering
 
 ### 🔒 **GDPR Compliance Checklist**
 
-- [ ] All data processing in EU (AWS Frankfurt)
-- [ ] No customer data in AI training
-- [ ] Secure file storage for uploads
-- [ ] Data retention policies implemented
-- [ ] User consent mechanisms in place
+- [ ] Invoice data stored in AWS Frankfurt (10-year retention)
+- [ ] Time tracking data EU-only processing
+- [ ] No sensitive data in exports
+- [ ] User consent for location tracking
+- [ ] Data retention policies for time logs
 
-### ⚡ **Quick Wins (30 min each)**
+### ⚡ **Implementation Order (Micro-Steps)**
 
-1. **Error Handling**: Add better error messages
-2. **Loading States**: Improve user feedback
-3. **Validation**: Enhance form validation
-4. **UI Polish**: Fix minor styling issues
-5. **Console Cleanup**: Remove debug logs
+#### **Phase 1: Invoice Foundation (Morning 9-12)**
+1. Create invoice database schema/migration
+2. Build basic invoice creation form
+3. Implement German law required fields
+4. Add invoice numbering system
+
+#### **Phase 2: Time Tracking Core (Afternoon 13-16)**
+1. Create time tracking database schema
+2. Build start/stop timer UI component
+3. Implement project auto-selection logic
+4. Create daily log view interface
+
+#### **Phase 3: Integration & Advanced Features (Evening 17-19)**
+1. Connect time data to invoice line items
+2. Implement dunning system basics
+3. Add export functionality
+4. Test end-to-end workflows
 
 ---
 
 ## 🎯 **Today's Focus Order:**
 
-1. **Morning (9-12)**: Fix appointment selection bug + testing
-2. **Afternoon (13-16)**: Upload functionality + dynamic rows
-3. **Evening (17-19)**: Dispatch options + final testing
-
-**Goal**: Have a fully functional AI-powered quote system by end of day.
+**Goal**: Complete WEEK 2 Invoicing & Time Tracking modules per AI Guide requirements.
 
 ---
 
-*Last Updated: August 20, 2025 - 09:26*
-*Priority: Complete WEEK 2 Quoting Module per AI Guide*
+*Last Updated: August 20, 2025 - 12:16*
+*Priority: WEEK 2 - Invoicing, Quoting & Time Tracking Modules*

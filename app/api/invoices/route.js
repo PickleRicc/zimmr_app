@@ -13,6 +13,19 @@ import {
   camelToSnake
 } from '../../../lib/api-utils';
 
+// Helper function to generate German legal footer text
+function getDefaultLegalFooter(isSmallBusinessExempt = false) {
+  if (isSmallBusinessExempt) {
+    return "Gemäß § 19 UStG wird keine Umsatzsteuer berechnet. " +
+           "Zahlbar ohne Abzug innerhalb von 14 Tagen nach Rechnungsdatum. " +
+           "Bei Zahlungsverzug werden Verzugszinsen in Höhe von 9 Prozentpunkten über dem Basiszinssatz berechnet.";
+  } else {
+    return "Zahlbar ohne Abzug innerhalb von 14 Tagen nach Rechnungsdatum. " +
+           "Bei Zahlungsverzug werden Verzugszinsen in Höhe von 9 Prozentpunkten über dem Basiszinssatz berechnet. " +
+           "Erfüllungsort und Gerichtsstand ist der Sitz des Auftragnehmers.";
+  }
+}
+
 // Initialize Supabase client using shared utility
 const ROUTE_NAME = 'Invoices API';
 const supabase = createSupabaseClient(ROUTE_NAME);
@@ -119,7 +132,42 @@ export async function POST(req) {
       totalMaterialsPrice += (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
     });
     
-    // Prepare data for insertion including materials as JSONB
+    // Get craftsman data for German compliance fields
+    const { data: craftsman, error: craftsmanError } = await supabase
+      .from('craftsmen')
+      .select('tax_number, vat_id, small_business_exempt')
+      .eq('id', craftsmanId)
+      .single();
+    
+    if (craftsmanError) {
+      console.warn(`${ROUTE_NAME} - Could not fetch craftsman data:`, craftsmanError);
+    }
+    
+    // Calculate total net amount (service + materials)
+    const serviceAmount = parseFloat(body.amount || 0);
+    const totalNetAmount = serviceAmount + totalMaterialsPrice;
+
+    // Calculate VAT based on German rules
+    let calculatedTaxAmount = 0;
+    let vatRate = 0.19; // Standard German VAT rate
+
+    if (body.small_business_exempt || craftsman?.small_business_exempt) {
+      // Small business exemption under §19 UStG
+      calculatedTaxAmount = 0;
+      vatRate = 0;
+    } else if (body.reverse_charge) {
+      // Reverse charge - customer pays VAT
+      calculatedTaxAmount = 0;
+      vatRate = 0;
+    } else {
+      // Standard VAT calculation on total net amount
+      calculatedTaxAmount = totalNetAmount * vatRate;
+    }
+
+    // Use provided tax amount or calculated amount
+    const finalTaxAmount = body.tax_amount !== undefined ? parseFloat(body.tax_amount || 0) : calculatedTaxAmount;
+    
+    // Prepare data for insertion including German compliance fields
     const insertBody = camelToSnake({ 
       ...body, // Include all fields from body
       craftsman_id: craftsmanId,
@@ -128,8 +176,19 @@ export async function POST(req) {
       materials: materials,
       // Ensure numeric values are properly formatted
       amount: parseFloat(body.amount || 0).toFixed(2),
-      tax_amount: parseFloat(body.tax_amount || 0).toFixed(2),
-      total_amount: parseFloat(body.total_amount || 0).toFixed(2)
+      tax_amount: finalTaxAmount.toFixed(2),
+      total_amount: (totalNetAmount + finalTaxAmount).toFixed(2),
+      // German compliance fields
+      tax_number: body.tax_number || craftsman?.tax_number || null,
+      vat_id: body.vat_id || craftsman?.vat_id || null,
+      small_business_exempt: body.small_business_exempt || craftsman?.small_business_exempt || false,
+      invoice_type: body.invoice_type || 'final',
+      payment_terms_days: body.payment_terms_days || 14,
+      issue_date: body.issue_date || new Date().toISOString().split('T')[0],
+      service_period_start: body.service_period_start || null,
+      service_period_end: body.service_period_end || null,
+      reverse_charge: body.reverse_charge || false,
+      legal_footer_text: body.legal_footer_text || getDefaultLegalFooter(craftsman?.small_business_exempt || body.small_business_exempt)
     });
     
     const { data: invoice, error } = await supabase
