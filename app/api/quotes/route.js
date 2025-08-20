@@ -160,15 +160,19 @@ export async function POST(req) {
       ...validFields 
     } = body;
     
-    // Store materials directly in the JSONB field
-    console.log(`${ROUTE_NAME} - Adding ${materials.length} materials directly to quote JSONB field`);
+    // Extract uploaded files from the request
+    const uploadedFiles = body.uploadedFiles || [];
+    
+    // Store materials and uploaded files directly in JSONB fields
+    console.log(`${ROUTE_NAME} - Adding ${materials.length} materials and ${uploadedFiles.length} uploaded files to quote JSONB fields`);
 
     // Ensure we have proper numeric values for the database
     const insertBody = camelToSnake({
       ...validFields,
       craftsman_id: craftsmanId,
-      // Include materials directly in JSONB field
+      // Include materials and uploaded files directly in JSONB fields
       materials: materials,
+      uploaded_files: uploadedFiles,
       // Use the values from the form explicitly, with fallbacks
       amount: parseFloat(body.amount || 0).toFixed(2),
       tax_amount: parseFloat(body.tax_amount || 0).toFixed(2),

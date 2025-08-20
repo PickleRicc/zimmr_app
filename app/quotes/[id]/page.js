@@ -93,21 +93,36 @@ export default function QuoteDetailPage({ params }) {
   useEffect(() => {
     if (authLoading || !user || !quoteId) return;
 
+    let isMounted = true;
+
     const init = async () => {
       try {
+        // Only proceed if component is still mounted
+        if (!isMounted) return;
+        
         // Fetch the quote details
         await fetchQuote();
+
+        // Only proceed if component is still mounted
+        if (!isMounted) return;
 
         // Fetch customers & appointments in parallel
         await Promise.all([fetchCustomers(), fetchAppointments()]);
       } catch (err) {
-        console.error('Error initializing quote detail page:', err);
-        setError('Fehler beim Laden der Angebotsdetails. Bitte versuchen Sie es später erneut.');
-        setLoading(false);
+        if (isMounted) {
+          console.error('Error initializing quote detail page:', err);
+          setError('Fehler beim Laden der Angebotsdetails. Bitte versuchen Sie es später erneut.');
+          setLoading(false);
+        }
       }
     };
 
     init();
+
+    // Cleanup function to prevent state updates on unmounted component
+    return () => {
+      isMounted = false;
+    };
   }, [authLoading, user, quoteId]);
 
   const fetchQuote = async () => {
@@ -115,7 +130,14 @@ export default function QuoteDetailPage({ params }) {
       setLoading(true);
       const response = await fetcher(`/api/quotes/${quoteId}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch quote details');
+        const errorText = await response.text();
+        console.error('Quote fetch failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          quoteId: quoteId
+        });
+        throw new Error(`Failed to fetch quote details: ${response.status} ${response.statusText}`);
       }
       const responseData = await response.json();
       // Extract the actual quote data from the API response
@@ -598,6 +620,64 @@ export default function QuoteDetailPage({ params }) {
                     <div className="mt-6">
                       <h3 className="text-sm font-medium text-white/60 mb-2">Notizen</h3>
                       <p className="text-white whitespace-pre-line bg-[#2a2a2a]/50 p-4 rounded-xl border border-[#2a2a2a]">{formData.notes}</p>
+                    </div>
+                  )}
+                  
+                  {/* Uploaded Files */}
+                  {formData.uploaded_files && Array.isArray(formData.uploaded_files) && formData.uploaded_files.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="text-sm font-medium text-white/60 mb-3 flex items-center">
+                        <svg className="w-4 h-4 mr-2 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        Hochgeladene Dateien ({formData.uploaded_files.length})
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {formData.uploaded_files.map((file, index) => (
+                          <div key={index} className="bg-[#2a2a2a]/50 rounded-xl p-4 border border-[#2a2a2a]">
+                            {file.type && file.type.startsWith('image/') ? (
+                              <div className="space-y-3">
+                                <img
+                                  src={file.data && file.data.startsWith('data:') ? file.data : `data:${file.type || 'image/png'};base64,${file.data || ''}`}
+                                  alt={file.name || 'Uploaded image'}
+                                  className="w-full h-32 object-cover rounded-lg border border-white/10"
+                                  onError={(e) => {
+                                    console.log('Image load error - File data preview:', file.data ? file.data.substring(0, 100) + '...' : 'No data');
+                                    console.log('Image load error - File type:', file.type);
+                                    console.log('Image load error - Constructed src:', e.target.src);
+                                    e.target.parentElement.innerHTML = `
+                                      <div class="flex items-center justify-center h-32 bg-gray-800 rounded-lg border border-white/10">
+                                        <div class="text-center">
+                                          <svg class="w-8 h-8 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                          </svg>
+                                          <p class="text-xs text-gray-400">Image failed to load</p>
+                                        </div>
+                                      </div>
+                                    `;
+                                  }}
+                                />
+                                <div>
+                                  <p className="text-white text-sm font-medium truncate">{file.name || 'Unknown file'}</p>
+                                  <p className="text-white/60 text-xs">{file.size ? (file.size / 1024 / 1024).toFixed(2) : '0.00'} MB</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center space-x-3">
+                                <div className="flex-shrink-0">
+                                  <svg className="w-8 h-8 text-red-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                    <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                                  </svg>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white text-sm font-medium truncate">{file.name || 'Unknown file'}</p>
+                                  <p className="text-white/60 text-xs">{file.size ? (file.size / 1024 / 1024).toFixed(2) : '0.00'} MB</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   

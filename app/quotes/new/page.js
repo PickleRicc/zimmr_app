@@ -10,6 +10,8 @@ import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import { generateInvoicePdf } from '../../../lib/utils/pdfGenerator';
 import MaterialSelector from '../../components/MaterialSelector';
+import AIQuoteAssistant from '../../components/AIQuoteAssistant';
+import SmartMaterialSelector from '../../components/SmartMaterialSelector';
 
 export default function NewQuotePage() {
   // Format date for better readability in the dropdown
@@ -37,9 +39,9 @@ export default function NewQuotePage() {
   const [formData, setFormData] = useState({
     craftsman_id: '',
     customer_id: '',
-    amount: '',
-    tax_amount: '',
-    total_amount: '',
+    amount: '0.00',
+    tax_amount: '0.00',
+    total_amount: '0.00',
     notes: '',
     due_date: '',
     service_date: '',
@@ -48,7 +50,9 @@ export default function NewQuotePage() {
     type: 'quote', // Default to quote type
     appointment_id: '',
     materials: [], // Array to store selected materials
-    total_materials_price: '0.00' // Total price of materials
+    total_materials_price: '0.00', // Total price of materials
+    serviceType: '', // For AI suggestions
+    projectDescription: '' // For AI analysis
   });
   
   const [customers, setCustomers] = useState([]);
@@ -62,6 +66,8 @@ export default function NewQuotePage() {
   const [success, setSuccess] = useState(false);
   const [createdQuote, setCreatedQuote] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [useSmartMaterials, setUseSmartMaterials] = useState(false);
   const router = useRouter();
   const { user, loading: authLoading } = useRequireAuth();
   const fetcher = useAuthedFetch();
@@ -309,6 +315,8 @@ export default function NewQuotePage() {
       const tax = formData.vat_exempt ? 0 : subtotal * 0.19;
       const total = subtotal + tax;
     
+      console.log('Amount changed:', { amount, materialsCost, subtotal, tax, total });
+    
       setFormData(prev => ({
         ...prev,
         [name]: value,
@@ -325,23 +333,70 @@ export default function NewQuotePage() {
     }));
   };
   
-  // Calculate the total price of all materials
-  const calculateMaterialsTotal = () => {
-    // Ensure materials is always an array
+  // Use React state for materials total to ensure reactivity
+  const [materialsTotal, setMaterialsTotal] = useState('0.00');
+  const [forceUpdate, setForceUpdate] = useState(0);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+
+  // Calculate materials total whenever materials change
+  useEffect(() => {
     const materialsArray = Array.isArray(formData.materials) ? formData.materials : [];
+    console.log('Materials changed, recalculating total for:', materialsArray);
     
-    // Calculate the total materials price
     const totalMaterialsPrice = materialsArray.reduce((sum, material) => {
       const quantity = parseFloat(material.quantity) || 0;
       const price = parseFloat(material.unit_price) || 0;
-      return sum + (quantity * price);
+      const lineTotal = quantity * price;
+      console.log(`Material ${material.name}: ${quantity} × ${price} = ${lineTotal}`);
+      return sum + lineTotal;
     }, 0);
     
-    return totalMaterialsPrice.toFixed(2);
+    console.log('Updated materials total:', totalMaterialsPrice);
+    setMaterialsTotal(totalMaterialsPrice.toFixed(2));
+    
+    // Update tax and total calculations when materials change
+    const serviceAmount = parseFloat(formData.amount) || 0;
+    const subtotal = serviceAmount + totalMaterialsPrice;
+    const tax = formData.vat_exempt ? 0 : subtotal * 0.19;
+    const total = subtotal + tax;
+    
+    console.log('Updating tax and total from materials change:', { serviceAmount, totalMaterialsPrice, subtotal, tax, total });
+    
+    // Update form data with new calculations
+    setFormData(prev => ({
+      ...prev,
+      total_materials_price: totalMaterialsPrice.toFixed(2),
+      tax_amount: tax.toFixed(2),
+      total_amount: total.toFixed(2)
+    }));
+  }, [formData.materials, formData.amount, formData.vat_exempt]);
+
+  // Calculate the total price of all materials (for backward compatibility)
+  const calculateMaterialsTotal = () => {
+    return materialsTotal;
+  };
+
+  // Calculate combined totals for display
+  const getDisplayTotals = () => {
+    const serviceAmount = parseFloat(formData.amount) || 0; // User input - service only
+    const materialsTotal = parseFloat(calculateMaterialsTotal()) || 0; // Materials only
+    const subtotal = serviceAmount + materialsTotal; // Service + Materials
+    const taxAmount = formData.vat_exempt ? 0 : subtotal * 0.19;
+    const total = subtotal + taxAmount;
+    
+    return {
+      serviceAmount: serviceAmount.toFixed(2),
+      materialsTotal: materialsTotal.toFixed(2),
+      subtotal: subtotal.toFixed(2),
+      taxAmount: taxAmount.toFixed(2),
+      total: total.toFixed(2)
+    };
   };
 
   // Handle materials selection changes
   const handleMaterialsChange = (materials) => {
+    console.log('handleMaterialsChange called with:', materials);
+    
     // Ensure materials is always an array
     const materialsArray = Array.isArray(materials) ? materials : [];
     
@@ -357,55 +412,101 @@ export default function NewQuotePage() {
     console.log('Materials array:', materialsArray);
     console.log('Total materials price calculated:', totalMaterialsPrice);
     
-    // Update the amount and tax calculation with correct logic
-    const amount = parseFloat(formData.amount) || 0;
-    const subtotal = amount + totalMaterialsPrice;
-    const tax = formData.vat_exempt ? 0 : subtotal * 0.19;
-    const total = subtotal + tax;
-    
-    console.log('Updating form data with materials total:', totalMaterialsPrice.toFixed(2));
-    
-    // Force a state update with the new materials and totals
+    // Update materials and force immediate re-render
     setFormData(prev => {
       const newState = {
         ...prev,
         materials: materialsArray,
-        total_materials_price: totalMaterialsPrice.toFixed(2),
-        tax_amount: tax.toFixed(2),
-        total_amount: total.toFixed(2)
+        total_materials_price: totalMaterialsPrice.toFixed(2)
       };
-      console.log('New form state:', newState);
+      console.log('Updated form state:', newState);
       return newState;
     });
+    
+    // Force immediate UI update
+    setForceUpdate(prev => prev + 1);
   };
 
   const handleAppointmentChange = (e) => {
     const appointmentId = e.target.value;
-    // Compare IDs as strings to support both numeric and UUID formats
-    const appointment = appointments.find(a => String(a.id) === String(appointmentId));
+    console.log('=== APPOINTMENT SELECTION DEBUG ===');
+    console.log('Raw appointmentId:', appointmentId);
+    console.log('appointmentId type:', typeof appointmentId);
+    console.log('All appointments:', appointments);
+    console.log('Filtered appointments:', filteredAppointments);
+    console.log('All customers:', customers);
+    
+    if (!appointmentId) {
+      console.log('No appointment selected (empty value)');
+      setSelectedAppointment(null);
+      setFormData(prev => ({ ...prev, appointment_id: '' }));
+      return;
+    }
+    
+    // Try both string and number comparison
+    const appointment = appointments.find(apt => {
+      console.log(`Comparing apt.id (${apt.id}, type: ${typeof apt.id}) with appointmentId (${appointmentId}, type: ${typeof appointmentId})`);
+      return apt.id == appointmentId || apt.id === parseInt(appointmentId, 10) || String(apt.id) === String(appointmentId);
+    });
+    
+    console.log('Found appointment:', appointment);
+    
+    if (!appointment) {
+      console.error('APPOINTMENT NOT FOUND! Available appointment IDs:', appointments.map(a => ({ id: a.id, type: typeof a.id })));
+      return;
+    }
+    
     setSelectedAppointment(appointment);
     
-    // Update form data with appointment information
     if (appointment) {
-      // Set associated customer
-      const customer = customers.find(c => c.id === appointment.customer_id);
+      // Find the customer details
+      console.log('Looking for customer with ID:', appointment.customer_id, 'type:', typeof appointment.customer_id);
+      console.log('Available customers:', customers.map(c => ({ id: c.id, type: typeof c.id, name: c.name })));
       
-      // Update related fields (customer_id, service_date, location if available)
+      const customer = customers.find(c => {
+        console.log(`Comparing customer.id (${c.id}, type: ${typeof c.id}) with appointment.customer_id (${appointment.customer_id}, type: ${typeof appointment.customer_id})`);
+        return c.id == appointment.customer_id || c.id === parseInt(appointment.customer_id, 10) || String(c.id) === String(appointment.customer_id);
+      });
+      
+      console.log('Found customer for appointment:', customer);
+      
+      if (!customer) {
+        console.error('CUSTOMER NOT FOUND for appointment.customer_id:', appointment.customer_id);
+      }
+      
+      // Update related fields with appointment and customer data
       const updates = {
         appointment_id: appointmentId,
         customer_id: String(appointment.customer_id),
         service_date: appointment.scheduled_at ? new Date(appointment.scheduled_at).toISOString().split('T')[0] : '',
       };
       
-      // Add location if available
+      // Add location from appointment if available, otherwise use customer address
       if (appointment.location) {
         updates.location = appointment.location;
+      } else if (customer && customer.address) {
+        updates.location = customer.address;
       }
       
-
+      // Add appointment service type if available
+      if (appointment.service_type) {
+        updates.service_type = appointment.service_type;
+      }
+      
+      // Add appointment notes to quote notes if available
+      if (appointment.notes) {
+        updates.notes = formData.notes ? 
+          `${formData.notes}\n\nTermin-Notizen: ${appointment.notes}` : 
+          `Termin-Notizen: ${appointment.notes}`;
+      }
+      
+      console.log('Updating form with appointment and customer data:', updates);
       
       // Update form state
       setFormData(prev => ({ ...prev, ...updates }));
+      
+      // Also update the selected customer state
+      setSelectedCustomer(customer);
       
       // Filter appointments by the selected customer to maintain consistency
       const customerAppointments = appointments.filter(apt => 
@@ -420,6 +521,110 @@ export default function NewQuotePage() {
         appointment_id: appointmentId,
       }));
     }
+  };
+
+  const handleAISuggestions = (suggestions) => {
+    console.log('Raw AI suggestions received:', suggestions);
+    
+    // Add AI suggestions to form data with correct MaterialSelector format
+    const aiLineItems = suggestions.map(suggestion => {
+      console.log('Processing suggestion:', suggestion);
+      console.log('Unit price from suggestion:', suggestion.unitPrice);
+      
+      return {
+        id: crypto.randomUUID(), // Unique ID for MaterialSelector
+        name: suggestion.description, // MaterialSelector expects 'name' not 'description'
+        quantity: suggestion.quantity,
+        unit: suggestion.unit,
+        unit_price: suggestion.unitPrice, // MaterialSelector expects 'unit_price'
+        category: suggestion.category
+      };
+    });
+    
+    console.log('Processed AI line items:', aiLineItems);
+    
+    // Update materials with AI suggestions - don't modify the amount field
+    setFormData(prev => ({
+      ...prev,
+      materials: [...prev.materials, ...aiLineItems]
+    }));
+  };
+
+  const handleGeneratedText = (text) => {
+    // Set AI-generated text in notes field
+    setFormData(prev => ({
+      ...prev,
+      notes: text
+    }));
+  };
+
+  // Handle file uploads
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    const validFiles = files.filter(file => {
+      const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      return validTypes.includes(file.type) && file.size <= maxSize;
+    });
+
+    if (validFiles.length !== files.length) {
+      alert('Nur JPG, PNG und PDF Dateien bis 10MB sind erlaubt.');
+    }
+
+    const newFiles = validFiles.map(file => ({
+      id: Date.now() + Math.random(),
+      file: file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    }));
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const removeFile = (fileId) => {
+    setUploadedFiles(prev => {
+      const fileToRemove = prev.find(f => f.id === fileId);
+      if (fileToRemove && fileToRemove.preview) {
+        URL.revokeObjectURL(fileToRemove.preview);
+      }
+      return prev.filter(f => f.id !== fileId);
+    });
+  };
+
+
+  const handleCustomerSelection = (customerId) => {
+    const customer = customers.find(c => c.id === parseInt(customerId, 10));
+    setSelectedCustomer(customer);
+    setFormData(prev => ({ ...prev, customer_id: customerId }));
+    
+    // Filter appointments for selected customer
+    if (customer) {
+      const customerAppointments = appointments.filter(apt => 
+        String(apt.customer_id) === String(customer.id)
+      );
+      setFilteredAppointments(customerAppointments);
+    } else {
+      setFilteredAppointments(appointments);
+    }
+  };
+
+  const handleSmartMaterialSelection = (material) => {
+    // Add smart material suggestion to materials with correct format
+    const newMaterial = {
+      id: crypto.randomUUID(),
+      name: material.name,
+      quantity: material.quantity || 1,
+      unit_price: material.price_per_unit || material.unit_price, // Handle both formats
+      unit: material.unit,
+      category: material.category
+    };
+    
+    setFormData(prev => ({
+      ...prev,
+      materials: [...prev.materials, newMaterial]
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -448,21 +653,20 @@ export default function NewQuotePage() {
       // Look up the customer name from the customers array
       const selectedCustomer = customers.find(c => c.id === parseInt(formData.customer_id, 10));
       
-      // Prepare the payload with materials data - mapped to match actual database schema
-      // Use the actual amounts from form data rather than recalculating
-      const amount = parseFloat(formData.amount) || 0;
-      const taxAmount = parseFloat(formData.tax_amount) || 0;
-      const totalAmount = parseFloat(formData.total_amount) || 0;
+      // Calculate correct totals including materials
+      const baseAmount = parseFloat(formData.amount) || 0;
+      const materialsTotal = parseFloat(formData.total_materials_price) || 0;
+      const subtotal = baseAmount + materialsTotal;
+      const taxAmount = formData.vat_exempt ? 0 : subtotal * 0.19;
+      const totalAmount = subtotal + taxAmount;
       
-      console.log('Amount values being used:', { 
-        amount, 
+      console.log('Corrected amount calculation:', { 
+        baseAmount, 
+        materialsTotal, 
+        subtotal,
         taxAmount, 
-        totalAmount, 
-        formValues: { 
-          amount: formData.amount, 
-          tax_amount: formData.tax_amount,
-          total_amount: formData.total_amount 
-        } 
+        totalAmount,
+        vat_exempt: formData.vat_exempt
       });
       
       const payload = {
@@ -470,7 +674,7 @@ export default function NewQuotePage() {
         appointment_id: formData.appointment_id || undefined, // Use undefined for empty values to avoid DB constraints
         status: 'draft',
         // Use proper column names from DB schema
-        amount: amount,
+        amount: baseAmount,
         tax_amount: taxAmount,
         total_amount: totalAmount,
         vat_exempt: formData.vat_exempt || false,
@@ -481,7 +685,9 @@ export default function NewQuotePage() {
         // Include notes about selected customer in notes field
         notes: `Angebot für ${selectedCustomer?.name || 'Kunde'}: ${formData.notes || ''}`,
         // Pass materials for junction table creation
-        materials: formData.materials || []
+        materials: formData.materials || [],
+        // Include uploaded files
+        uploadedFiles: uploadedFiles || []
       };
       
       console.log('Quote payload formatted for DB schema:', payload);
@@ -574,7 +780,7 @@ export default function NewQuotePage() {
       setPdfLoading(true);
       
       // Generate PDF for created quote
-      await quotesAPI.generatePdf(createdQuote);
+      await generateInvoicePdf(createdQuote);
       
       console.log('PDF erfolgreich erstellt');
     } catch (err) {
@@ -593,18 +799,14 @@ export default function NewQuotePage() {
     <>
       <Header />
       <div className="min-h-screen bg-gradient-to-b from-[#121212] to-[#1a1a1a] text-white">
-        <main className="container mx-auto px-4 py-8">
-          {/* Page Title and Back Link */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold">Neues Angebot erstellen</h1>
-              <p className="text-gray-400">Füllen Sie das Formular aus, um ein neues Angebot zu erstellen</p>
-            </div>
+        <div className="max-w-4xl mx-auto p-4 md:p-6 bg-black text-white min-h-screen">
+          <div className="bg-[#1a1a1a] rounded-2xl p-4 md:p-8 shadow-xl border border-white/10">
+            <h1 className="text-xl md:text-2xl font-bold mb-6 md:mb-8 text-center">Neues Angebot erstellen</h1>
             <Link 
               href="/quotes" 
-              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl transition-colors"
+              className="inline-flex items-center text-[#ffcb00] hover:text-[#e6b800] transition-colors mb-6"
             >
-              Zurück zu den Angeboten
+              ← Zurück zu den Angeboten
             </Link>
           </div>
 
@@ -613,7 +815,7 @@ export default function NewQuotePage() {
             <div className="bg-green-900/50 border border-green-500 text-white p-4 rounded-xl mb-6">
               <h2 className="font-bold text-lg mb-2">Angebot erfolgreich erstellt!</h2>
               <p className="mb-4">Ihr Angebot wurde erfolgreich erstellt und im System gespeichert.</p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={handleGeneratePdf}
                   disabled={pdfLoading}
@@ -658,9 +860,12 @@ export default function NewQuotePage() {
                   <div className="relative">
                     <select
                       name="appointment_id"
-                      value={formData.appointment_id}
-                      onChange={handleAppointmentChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
+                      value={formData.appointment_id || ''}
+                      onChange={(e) => {
+                        console.log('SELECT onChange triggered with value:', e.target.value);
+                        handleAppointmentChange(e);
+                      }}
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
                       disabled={loadingAppointments || success}
                     >
                       <option value="">-- Termin auswählen --</option>
@@ -714,85 +919,103 @@ export default function NewQuotePage() {
 
                 {/* Selected Appointment Card */}
                 {selectedAppointment && (
-                  <div className="mb-6 p-4 bg-[#1e3a5f]/50 rounded-xl border border-white/10">
-                    <h3 className="font-medium mb-2">Ausgewählter Termin</h3>
+                  <div className="mb-6 p-4 bg-gray-900/30 border border-gray-500/30 rounded-xl">
+                    <h3 className="font-medium mb-2 text-gray-300">✓ Termin ausgewählt - Details übernommen</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-gray-400">Datum:</span> {formatAppointmentDate(selectedAppointment.scheduled_at)}
+                        <span className="text-gray-400">Datum:</span> {new Date(selectedAppointment.scheduled_at).toLocaleDateString('de-DE')}
                       </div>
                       <div>
-                        <span className="text-gray-400">Kunde:</span> {
-                          (() => {
-                            // First try to get customer from appointment.customers
-                            if (selectedAppointment.customers) {
-                              return selectedAppointment.customers.name || 
-                                     [selectedAppointment.customers.first_name, selectedAppointment.customers.last_name].filter(Boolean).join(' ').trim() ||
-                                     'Nicht angegeben';
-                            }
-                            // Fallback: find customer in customers array
-                            const customer = customers.find(c => c.id === selectedAppointment.customer_id);
-                            if (customer) {
-                              return customer.name || 
-                                     [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() ||
-                                     'Nicht angegeben';
-                            }
-                            return 'Nicht angegeben';
-                          })()
-                        }
+                        <span className="text-gray-400">Kunde:</span> {selectedCustomer?.name || 'Nicht gefunden'}
                       </div>
                       <div>
-                        <span className="text-gray-400">Ort:</span> {selectedAppointment.location || 'Nicht angegeben'}
+                        <span className="text-gray-400">Zeit:</span> {new Date(selectedAppointment.scheduled_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                       <div>
-                        <span className="text-gray-400">Status:</span> {selectedAppointment.status || 'Nicht angegeben'}
+                        <span className="text-gray-400">Service:</span> {selectedAppointment.service_type || 'Nicht angegeben'}
                       </div>
+                      {selectedAppointment.location && (
+                        <div className="col-span-1 lg:col-span-2">
+                          <span className="text-gray-400">Adresse:</span> {selectedAppointment.location}
+                        </div>
+                      )}
+                      {selectedCustomer?.address && !selectedAppointment.location && (
+                        <div className="col-span-1 lg:col-span-2">
+                          <span className="text-gray-400">Kundenadresse:</span> {selectedCustomer.address}
+                        </div>
+                      )}
                       {selectedAppointment.notes && (
-                        <div className="col-span-1 md:col-span-2">
-                          <span className="text-gray-400">Notizen:</span> {selectedAppointment.notes}
+                        <div className="col-span-1 lg:col-span-2">
+                          <span className="text-gray-400">Termin-Notizen:</span> {selectedAppointment.notes}
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* Form Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Customer Selection */}
-                  <div className="col-span-1 md:col-span-2">
-                    <label className="block text-sm font-medium mb-1">
-                      Kunde *
-                    </label>
-                    <div className="relative">
-                      <select
-                        name="customer_id"
-                        value={formData.customer_id}
-                        onChange={handleChange}
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
-                        required
-                        disabled={loading || success}
-                      >
-                        <option value="">-- Kunde auswählen --</option>
-                        {customers.map(customer => {
-                           const displayName = customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim();
-                           return (
-                             <option key={customer.id} value={customer.id}>
-                               {displayName || 'Unbenannt'} {customer.email ? `(${customer.email})` : ''}
-                             </option>
-                           );
-                         })}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                        <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </div>
+
+                {/* Customer Selection */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-1">
+                    Kunde *
+                  </label>
+                  <div className="relative">
+                    <select
+                      name="customer_id"
+                      value={formData.customer_id}
+                      onChange={(e) => {
+                        handleChange(e);
+                        handleCustomerSelection(e.target.value);
+                      }}
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
+                      required
+                      disabled={success}
+                    >
+                      <option value="">-- Kunde auswählen --</option>
+                      {customers.map(customer => (
+                        <option key={customer.id} value={customer.id}>
+                          {customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || `Kunde ${customer.id}`}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
                     </div>
-                    {loading && (
-                      <p className="text-sm text-gray-400 mt-1 flex items-center">
-                        <span className="mr-2 h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
-                        Kunden werden geladen...
-                      </p>
-                    )}
+                  </div>
+                  {loading && (
+                    <p className="text-sm text-gray-400 mt-1 flex items-center">
+                      <span className="mr-2 h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
+                      Kunden werden geladen...
+                    </p>
+                  )}
+                </div>
+
+                {/* Form Fields */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6">
+                  {/* Service Type */}
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Art der Dienstleistung
+                    </label>
+                    <select
+                      name="serviceType"
+                      value={formData.serviceType}
+                      onChange={handleChange}
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
+                      disabled={success}
+                    >
+                      <option value="">-- Dienstleistung auswählen --</option>
+                      <option value="bathroom">Badezimmer</option>
+                      <option value="kitchen">Küche</option>
+                      <option value="flooring">Bodenbeläge</option>
+                      <option value="tiling">Fliesenarbeiten</option>
+                      <option value="renovation">Renovierung</option>
+                      <option value="repair">Reparatur</option>
+                      <option value="installation">Installation</option>
+                      <option value="maintenance">Wartung</option>
+                    </select>
                   </div>
 
                   {/* Service Date */}
@@ -805,7 +1028,7 @@ export default function NewQuotePage() {
                       name="service_date"
                       value={formData.service_date}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                       disabled={success}
                     />
                   </div>
@@ -820,13 +1043,14 @@ export default function NewQuotePage() {
                       name="location"
                       value={formData.location}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      placeholder={selectedAppointment ? "Adresse aus Termin verwenden" : "Adresse eingeben"}
                       disabled={success}
                     />
                   </div>
 
                   {/* VAT Exempt Checkbox */}
-                  <div className="col-span-1 md:col-span-2">
+                  <div className="col-span-1 lg:col-span-2">
                     <div className="flex items-center">
                       <input
                         type="checkbox"
@@ -859,11 +1083,14 @@ export default function NewQuotePage() {
                         onChange={handleChange}
                         step="0.01"
                         min="0"
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                        className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                         required
                         disabled={success}
                       />
                     </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Service-Betrag (ohne Materialien). Materialien werden separat berechnet.
+                    </p>
                   </div>
 
                   {/* Tax Amount (calculated) */}
@@ -879,16 +1106,16 @@ export default function NewQuotePage() {
                         <input
                           type="number"
                           name="tax_amount"
-                          value={formData.tax_amount}
+                          value={formData.tax_amount || getDisplayTotals().taxAmount}
                           step="0.01"
                           min="0"
-                          className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                          className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                           readOnly
                           disabled={success}
                         />
                       </div>
                       <p className="text-xs text-gray-400 mt-1">
-                        Automatisch berechnet als 19% von (Betrag + Materialien)
+                        Automatisch berechnet als 19% von (€{getDisplayTotals().serviceAmount} Service + €{getDisplayTotals().materialsTotal} Materialien)
                       </p>
                     </div>
                   )}
@@ -905,18 +1132,18 @@ export default function NewQuotePage() {
                       <input
                         type="number"
                         name="total_amount"
-                        value={formData.total_amount}
+                        value={formData.total_amount || getDisplayTotals().total}
                         onChange={handleChange}
                         step="0.01"
                         min="0"
-                        className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                        className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl pl-8 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                         required
                         readOnly
                         disabled={success}
                       />
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                       Automatisch berechnet aus Betrag + Materialien + Steuer
+                       €{getDisplayTotals().serviceAmount} (Service) + €{getDisplayTotals().materialsTotal} (Materialien) + €{getDisplayTotals().taxAmount} (Steuer)
                     </p>
                   </div>
                   
@@ -930,41 +1157,140 @@ export default function NewQuotePage() {
                       name="due_date"
                       value={formData.due_date}
                       onChange={handleChange}
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
                       disabled={success}
                     />
                   </div>
                   
-                  {/* Notes */}
-                  <div className="col-span-1 md:col-span-2">
+                  {/* Project Description */}
+                  <div className="col-span-1 lg:col-span-2">
                     <label className="block text-sm font-medium mb-1">
-                      Notizen
+                      Projektbeschreibung
+                    </label>
+                    <textarea
+                      name="projectDescription"
+                      value={formData.projectDescription}
+                      onChange={handleChange}
+                      rows="4"
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] resize-vertical"
+                      placeholder="Beschreiben Sie das Projekt für bessere KI-Vorschläge..."
+                      disabled={success}
+                    />
+                  </div>
+
+                  {/* Quote Notes */}
+                  <div className="col-span-1 lg:col-span-2">
+                    <label className="block text-sm font-medium mb-1">
+                      Angebots-Notizen
                     </label>
                     <textarea
                       name="notes"
                       value={formData.notes}
                       onChange={handleChange}
-                      rows="4"
-                      className="w-full bg-[#1e3a5f] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]"
+                      rows="3"
+                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] resize-vertical"
+                      placeholder="Zusätzliche Notizen zum Angebot..."
                       disabled={success}
-                    ></textarea>
+                    />
+                    
+                    {/* File Upload Section */}
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium mb-2">
+                        📎 Dateien anhängen (Fotos, Skizzen, PDFs)
+                      </label>
+                      <div className="border-2 border-dashed border-white/20 rounded-xl p-4 hover:border-[#ffcb00]/50 transition-colors">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/jpg,image/png,application/pdf"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                          id="file-upload"
+                          disabled={success}
+                        />
+                        <label
+                          htmlFor="file-upload"
+                          className="cursor-pointer flex flex-col items-center justify-center text-center"
+                        >
+                          <div className="text-3xl mb-2">📁</div>
+                          <div className="text-sm text-gray-300">
+                            Klicken Sie hier oder ziehen Sie Dateien hierher
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            JPG, PNG, PDF • Max. 10MB pro Datei
+                          </div>
+                        </label>
+                      </div>
+                      
+                      {/* Uploaded Files Display */}
+                      {uploadedFiles.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <h4 className="text-sm font-medium text-gray-300">Hochgeladene Dateien:</h4>
+                          {uploadedFiles.map(file => (
+                            <div key={file.id} className="flex items-center justify-between bg-[#2a2a2a] rounded-lg p-3">
+                              <div className="flex items-center gap-3">
+                                {file.preview ? (
+                                  <img src={file.preview} alt={file.name} className="w-10 h-10 object-cover rounded" />
+                                ) : (
+                                  <div className="w-10 h-10 bg-red-500 rounded flex items-center justify-center text-white text-xs">
+                                    PDF
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="text-sm font-medium">{file.name}</div>
+                                  <div className="text-xs text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeFile(file.id)}
+                                className="text-red-400 hover:text-red-300 text-sm"
+                                disabled={success}
+                              >
+                                Entfernen
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
                 
                 {/* Materials Section */}
                 <div className="mt-8 pt-6 border-t border-white/10">
                   <MaterialSelector 
+                    key={`materials-${forceUpdate}`}
                     selectedMaterials={formData.materials}
                     onChange={handleMaterialsChange}
                   />
+                  
                   
                   {/* Materials Total */}
                   <div className="mt-4 flex justify-end">
                     <div className="bg-[#ffcb00] border border-[#ffcb00]/50 rounded-xl px-6 py-3 inline-flex items-center">
                       <span className="text-sm font-medium text-black">Materials Total:</span>
-                      <span className="ml-4 text-lg font-semibold text-black">€{calculateMaterialsTotal()}</span>
+                      <span className="ml-4 text-lg font-semibold text-black" key={`total-${forceUpdate}`}>€{materialsTotal}</span>
                     </div>
                   </div>
+                </div>
+
+                {/* AI Quote Assistant */}
+                <div className="mt-8 pt-6 border-t border-white/10">
+                  {formData.serviceType && formData.projectDescription ? (
+                    <AIQuoteAssistant
+                      key="ai-quote-assistant"
+                      serviceType={formData.serviceType}
+                      projectDescription={formData.projectDescription}
+                      customer={selectedCustomer}
+                      onSuggestionsReceived={handleAISuggestions}
+                      onTextGenerated={handleGeneratedText}
+                    />
+                  ) : (
+                    <div className="text-center py-8 text-gray-400">
+                      <p>Wählen Sie eine Dienstleistung und fügen Sie eine Projektbeschreibung hinzu, um KI-Funktionen zu aktivieren.</p>
+                    </div>
+                  )}
+                </div>
                 </div>
                 
                 {/* Submit Button */}
@@ -988,7 +1314,7 @@ export default function NewQuotePage() {
               </form>
             </div>
           )}
-        </main>
+        </div>
       </div>
       <Footer />
     </>

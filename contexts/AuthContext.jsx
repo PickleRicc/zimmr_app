@@ -34,10 +34,17 @@ export function AuthProvider({ children }) {
           setUser(data.session?.user || null);
         }
         
-        // Set up auth state listener
+        // Set up auth state listener with debouncing to prevent excessive re-renders
+        let timeoutId;
         const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-          setSession(session);
-          setUser(session?.user || null);
+          // Clear previous timeout
+          if (timeoutId) clearTimeout(timeoutId);
+          
+          // Debounce auth state changes to prevent rapid fire updates
+          timeoutId = setTimeout(() => {
+            setSession(session);
+            setUser(session?.user || null);
+          }, 100);
         });
         
         // Cleanup subscription on unmount

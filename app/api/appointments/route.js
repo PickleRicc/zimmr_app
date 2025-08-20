@@ -80,7 +80,7 @@ export async function GET(req) {
       if (customerIds.length > 0) {
         const { data: customers, error: custError } = await supabase
           .from('customers')
-          .select('id, name, first_name, last_name, email')
+          .select('id, name, email')
           .in('id', customerIds);
           
         if (custError) {
