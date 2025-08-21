@@ -32,10 +32,21 @@ export async function GET(req) {
     }
 
     console.log(`${ROUTE_NAME} - Fetching time entries for craftsman: ${craftsmanId}`);
-    const { data, error } = await supabase
+    
+    const url = new URL(req.url);
+    const status = url.searchParams.get('status');
+    
+    let query = supabase
       .from('time_entries')
       .select('*')
-      .eq('craftsman_id', craftsmanId)
+      .eq('craftsman_id', craftsmanId);
+    
+    // Filter by status if provided (for checking active timers)
+    if (status) {
+      query = query.eq('status', status);
+    }
+    
+    const { data, error } = await query
       .order('start_time', { ascending: false });
 
     if (error) {

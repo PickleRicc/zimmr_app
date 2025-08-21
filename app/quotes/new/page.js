@@ -98,10 +98,39 @@ export default function NewQuotePage() {
         // Fetch customers & appointments in parallel
         await Promise.all([fetchCustomers(), fetchAppointments()]);
 
-        // Optional: pre-fill form when navigated from appointment
+        // Handle prefill data from time tracking or appointments
         if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
-          if (params.get('from_appointment') === 'true') {
+          
+          // Handle prefill data from time tracking
+          const prefillData = params.get('prefill');
+          if (prefillData) {
+            try {
+              const parsedData = JSON.parse(decodeURIComponent(prefillData));
+              console.log('Prefill data received:', parsedData);
+              
+              const dueDate = new Date();
+              dueDate.setDate(dueDate.getDate() + 30); // 30 days for quotes
+              const formattedDueDate = dueDate.toISOString().split('T')[0];
+              
+              setFormData(prev => ({
+                ...prev,
+                customer_id: parsedData.customer_id?.toString() || '',
+                appointment_id: parsedData.appointment_id?.toString() || '',
+                amount: parsedData.net_amount?.toString() || '',
+                tax_amount: (parsedData.net_amount * 0.19).toFixed(2),
+                total_amount: (parsedData.net_amount * 1.19).toFixed(2),
+                due_date: formattedDueDate,
+                materials: parsedData.line_items || [],
+                notes: `Time entry: ${parsedData.line_items?.[0]?.description || 'Work completed'}`,
+                vat_exempt: false
+              }));
+            } catch (err) {
+              console.error('Error parsing prefill data:', err);
+            }
+          }
+          // Handle appointment prefill
+          else if (params.get('from_appointment') === 'true') {
             const amountRaw = params.get('amount') || '';
             const amount = parseFloat(amountRaw) || 0;
             const tax = formData.vat_exempt ? 0 : amount * 0.19;

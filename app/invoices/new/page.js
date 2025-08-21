@@ -16,6 +16,7 @@ function InvoicePageContent() {
   const authedFetch = useAuthedFetch();
   const searchParams = useSearchParams();
   const quoteId = searchParams.get('quote_id');
+  const prefillData = searchParams.get('prefill');
   const [formData, setFormData] = useState({
     customer_id: '',
     amount: '',
@@ -53,6 +54,9 @@ function InvoicePageContent() {
   const [success, setSuccess] = useState(false);
   const [createdInvoice, setCreatedInvoice] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [loadingTimeEntries, setLoadingTimeEntries] = useState(false);
+  const [showTimeEntriesModal, setShowTimeEntriesModal] = useState(false);
   const router = useRouter();
 
   // Function to fetch quote data and pre-fill the form
@@ -121,6 +125,32 @@ function InvoicePageContent() {
         await Promise.all([fetchCustomers(), fetchAppointments()]);
         if (quoteId) {
           await fetchQuoteData(quoteId);
+        }
+        // Handle prefill data from time tracking
+        if (prefillData) {
+          try {
+            const parsedData = JSON.parse(decodeURIComponent(prefillData));
+            console.log('Prefill data received:', parsedData);
+            
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 14);
+            const formattedDueDate = dueDate.toISOString().split('T')[0];
+            
+            setFormData(prev => ({
+              ...prev,
+              customer_id: parsedData.customer_id?.toString() || '',
+              appointment_id: parsedData.appointment_id?.toString() || '',
+              amount: parsedData.net_amount?.toString() || '',
+              tax_amount: (parsedData.net_amount * 0.19).toFixed(2),
+              total_amount: (parsedData.net_amount * 1.19).toFixed(2),
+              due_date: formattedDueDate,
+              materials: parsedData.line_items || [],
+              notes: `Time entry: ${parsedData.line_items?.[0]?.description || 'Work completed'}`,
+              vat_exempt: false
+            }));
+          } catch (err) {
+            console.error('Error parsing prefill data:', err);
+          }
         }
         if (typeof window !== 'undefined') {
           const urlParams = new URLSearchParams(window.location.search);
@@ -274,6 +304,86 @@ function InvoicePageContent() {
     }
     
     return data;
+  };
+
+  // Fetch time entries for a customer or appointment
+  const fetchTimeEntries = async (customerId = null, appointmentId = null) => {
+    try {
+      setLoadingTimeEntries(true);
+      let url = '/api/time-tracking';
+      const params = new URLSearchParams();
+      
+      if (customerId) params.append('customer_id', customerId);
+      if (appointmentId) params.append('appointment_id', appointmentId);
+      
+      if (params.toString()) {
+        url += '?' + params.toString();
+      }
+      
+      const response = await authedFetch(url);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.message || 'Failed to fetch time entries');
+      }
+      
+      const responseData = await response.json();
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      
+      // Filter only billable and completed entries
+      const billableEntries = Array.isArray(data) ? data.filter(entry => 
+        entry.is_billable && entry.status === 'completed' && entry.duration_minutes > 0
+      ) : [];
+      
+      setTimeEntries(billableEntries);
+      return billableEntries;
+    } catch (err) {
+      console.error('Error fetching time entries:', err);
+      setError(err.message || 'Failed to fetch time entries');
+      setTimeEntries([]);
+      return [];
+    } finally {
+      setLoadingTimeEntries(false);
+    }
+  };
+
+  // Import time entries as line items
+  const importTimeEntries = (selectedEntries) => {
+    const timeLineItems = selectedEntries.map(entry => {
+      const hours = (entry.duration_minutes || 0) / 60;
+      const rate = parseFloat(entry.hourly_rate) || 50; // Default rate if not set
+      const amount = hours * rate;
+      
+      return {
+        id: `time_${entry.id}`,
+        name: entry.description || 'Time Entry',
+        quantity: hours.toFixed(2),
+        unit: 'hours',
+        unit_price: rate.toFixed(2),
+        total_price: amount.toFixed(2),
+        category: 'Labor',
+        notes: entry.notes || `Time entry from ${new Date(entry.start_time).toLocaleDateString('de-DE')}`
+      };
+    });
+    
+    // Add time entries to existing materials
+    const updatedMaterials = [...(formData.materials || []), ...timeLineItems];
+    
+    setFormData(prev => ({
+      ...prev,
+      materials: updatedMaterials
+    }));
+    
+    // Recalculate totals
+    setTimeout(() => {
+      const materialsTotal = calculateMaterialsTotal();
+      setFormData(prev => handleVatChange({
+        ...prev,
+        total_materials_price: materialsTotal
+      }));
+    }, 100);
+    
+    setShowTimeEntriesModal(false);
   };
 
   // Calculate the total price of all materials currently in the form
@@ -1139,7 +1249,28 @@ function InvoicePageContent() {
 
                    {/* Materials Section */}
                    <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-white/10">
-                     <h3 className="text-lg font-semibold mb-3 text-gray-300">Materialien und Dienstleistungen</h3>
+                     <div className="flex justify-between items-center mb-3">
+                       <h3 className="text-lg font-semibold text-gray-300">Materialien und Dienstleistungen</h3>
+                       <button
+                         type="button"
+                         onClick={() => {
+                           if (formData.customer_id) {
+                             fetchTimeEntries(formData.customer_id, formData.appointment_id);
+                             setShowTimeEntriesModal(true);
+                           } else {
+                             setError('Bitte wählen Sie zuerst einen Kunden aus');
+                             setTimeout(() => setError(''), 3000);
+                           }
+                         }}
+                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors flex items-center"
+                         disabled={!formData.customer_id || loadingTimeEntries}
+                       >
+                         <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                         </svg>
+                         {loadingTimeEntries ? 'Lade...' : 'Zeiterfassung importieren'}
+                       </button>
+                     </div>
                      <MaterialSelector
                        selectedMaterials={formData.materials}
                        onChange={handleMaterialsChange}
@@ -1199,9 +1330,169 @@ function InvoicePageContent() {
         </main> {/* Closing main tag */}
         <Footer /> {/* Added Footer */}
       </div> {/* Closing main layout div */}
+
+      {/* Time Entries Import Modal */}
+      {showTimeEntriesModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 p-4">
+          <div className="bg-[#121212] border border-white/10 rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-white">Zeiterfassung importieren</h2>
+              <button 
+                onClick={() => setShowTimeEntriesModal(false)}
+                className="text-white/70 hover:text-white"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+              </button>
+            </div>
+
+            {loadingTimeEntries ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ffcb00] mx-auto"></div>
+                <p className="text-white/70 mt-2">Lade Zeiterfassung...</p>
+              </div>
+            ) : timeEntries.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-white/70">Keine abrechenbaren Zeiterfassungen für diesen Kunden gefunden.</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-white/70 mb-4">
+                  Wählen Sie die Zeiterfassungen aus, die Sie als Positionen zur Rechnung hinzufügen möchten:
+                </p>
+                
+                <TimeEntriesTable 
+                  entries={timeEntries}
+                  onImport={importTimeEntries}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </> // Closing fragment
   ); // Closing return
 } // Closing component function
+
+// Time Entries Table Component
+function TimeEntriesTable({ entries, onImport }) {
+  const [selectedEntries, setSelectedEntries] = useState([]);
+
+  const toggleEntry = (entry) => {
+    setSelectedEntries(prev => {
+      const isSelected = prev.find(e => e.id === entry.id);
+      if (isSelected) {
+        return prev.filter(e => e.id !== entry.id);
+      } else {
+        return [...prev, entry];
+      }
+    });
+  };
+
+  const formatDuration = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('de-DE');
+  };
+
+  const calculateTotal = () => {
+    return selectedEntries.reduce((sum, entry) => {
+      const hours = (entry.duration_minutes || 0) / 60;
+      const rate = parseFloat(entry.hourly_rate) || 50;
+      return sum + (hours * rate);
+    }, 0).toFixed(2);
+  };
+
+  return (
+    <div>
+      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mb-4">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="bg-white/10">
+              <th className="p-3 text-white/80 font-medium w-12">
+                <input
+                  type="checkbox"
+                  checked={selectedEntries.length === entries.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedEntries([...entries]);
+                    } else {
+                      setSelectedEntries([]);
+                    }
+                  }}
+                  className="w-4 h-4 accent-[#ffcb00]"
+                />
+              </th>
+              <th className="p-3 text-white/80 font-medium">Datum</th>
+              <th className="p-3 text-white/80 font-medium">Beschreibung</th>
+              <th className="p-3 text-white/80 font-medium">Dauer</th>
+              <th className="p-3 text-white/80 font-medium">Stundensatz</th>
+              <th className="p-3 text-white/80 font-medium">Betrag</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {entries.map((entry) => {
+              const hours = (entry.duration_minutes || 0) / 60;
+              const rate = parseFloat(entry.hourly_rate) || 50;
+              const amount = hours * rate;
+              const isSelected = selectedEntries.find(e => e.id === entry.id);
+
+              return (
+                <tr 
+                  key={entry.id} 
+                  className={`hover:bg-white/5 cursor-pointer ${isSelected ? 'bg-[#ffcb00]/10' : ''}`}
+                  onClick={() => toggleEntry(entry)}
+                >
+                  <td className="p-3">
+                    <input
+                      type="checkbox"
+                      checked={!!isSelected}
+                      onChange={() => toggleEntry(entry)}
+                      className="w-4 h-4 accent-[#ffcb00]"
+                    />
+                  </td>
+                  <td className="p-3 text-white">{formatDate(entry.start_time)}</td>
+                  <td className="p-3 text-white">
+                    {entry.description}
+                    {entry.notes && (
+                      <div className="text-white/60 text-sm mt-1">{entry.notes}</div>
+                    )}
+                  </td>
+                  <td className="p-3 text-white">{formatDuration(entry.duration_minutes)}</td>
+                  <td className="p-3 text-white">€{rate.toFixed(2)}/h</td>
+                  <td className="p-3 text-white">€{amount.toFixed(2)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <div className="text-white">
+          <span className="font-medium">{selectedEntries.length}</span> von {entries.length} ausgewählt
+          {selectedEntries.length > 0 && (
+            <span className="ml-4 text-[#ffcb00] font-medium">
+              Gesamt: €{calculateTotal()}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => onImport(selectedEntries)}
+          disabled={selectedEntries.length === 0}
+          className="px-6 py-2 bg-[#ffcb00] text-black font-medium rounded-lg hover:bg-[#e3b700] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {selectedEntries.length} Einträge importieren
+        </button>
+      </div>
+    </div>
+  );
+}
 
 
 // Need to wrap the component with Suspense because it uses useSearchParams

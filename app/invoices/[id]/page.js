@@ -20,6 +20,7 @@ export default function InvoiceDetailPage({ params }) {
   const [invoice, setInvoice] = useState(null);
   const [customers, setCustomers] = useState([]);
   const [appointment, setAppointment] = useState(null);
+  const [craftsmanData, setCraftsmanData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -33,14 +34,25 @@ export default function InvoiceDetailPage({ params }) {
     total_amount: '',
     notes: '',
     due_date: '',
-    status: '',
+    status: 'pending',
     service_date: '',
     location: '',
     vat_exempt: false,
     type: 'invoice',
     appointment_id: '',
     materials: [],
-    total_materials_price: '0.00'
+    total_materials_price: '0.00',
+    // German compliance fields
+    invoice_type: 'final',
+    tax_number: '',
+    vat_id: '',
+    small_business_exempt: false,
+    payment_terms_days: 14,
+    issue_date: '',
+    service_period_start: '',
+    service_period_end: '',
+    reverse_charge: false,
+    legal_footer_text: ''
   });
   
   const router = useRouter();
@@ -50,6 +62,7 @@ export default function InvoiceDetailPage({ params }) {
     if (!authLoading && user && invoiceId) {
       fetchInvoice();
       fetchCustomers();
+      fetchCraftsmanData();
     }
   }, [user, authLoading, invoiceId]);
 
@@ -67,18 +80,14 @@ export default function InvoiceDetailPage({ params }) {
       // Extract data, supporting both new standardized and legacy formats
       const data = responseData.data !== undefined ? responseData.data : responseData;
       console.log('Fetched invoice:', data);
+      console.log('Materials in fetched data:', data.materials);
+      console.log('Materials type:', typeof data.materials);
+      console.log('Materials is array:', Array.isArray(data.materials));
       
       // Display success message if available
       if (responseData.message) {
         console.log('API Message:', responseData.message);
       }
-      
-      // DEBUGGING: Log materials information when invoice is fetched
-      console.log('========= MATERIALS DATA DEBUG (Invoice Fetch) =========');
-      console.log('Fetched invoice.materials:', data.materials);
-      console.log('Materials valid array?', Array.isArray(data.materials));
-      console.log('Materials length:', Array.isArray(data.materials) ? data.materials.length : 0);
-      console.log('Total materials price:', data.total_materials_price);
       
       // Calculate total materials price if needed (in case it's not properly set)
       let calculatedMaterialsPrice = 0;
@@ -86,17 +95,16 @@ export default function InvoiceDetailPage({ params }) {
         calculatedMaterialsPrice = data.materials.reduce((total, material) => {
           return total + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
         }, 0);
-        console.log('Calculated materials price from array:', calculatedMaterialsPrice);
-        
-        // If there's a significant difference between the stored total and calculated total
-        if (Math.abs(calculatedMaterialsPrice - parseFloat(data.total_materials_price || 0)) > 0.01) {
-          console.warn('Warning: Calculated materials price differs from stored value');
-        }
       }
-      console.log('========= END MATERIALS DEBUG =========');
       setInvoice(data);
       
       // Initialize form data with invoice data
+      const materialsArray = Array.isArray(data.materials) ? data.materials : [];
+      const calculatedTotal = materialsArray.length > 0 ? calculatedMaterialsPrice.toFixed(2) : (data.total_materials_price || '0.00');
+      
+      console.log('Setting form data with materials:', materialsArray);
+      console.log('Materials price:', calculatedTotal);
+      
       setFormData({
         customer_id: data.customer_id,
         amount: data.amount,
@@ -110,8 +118,8 @@ export default function InvoiceDetailPage({ params }) {
         vat_exempt: data.vat_exempt || false,
         type: data.type || 'invoice',
         appointment_id: data.appointment_id || '',
-        materials: data.materials || [],
-        total_materials_price: data.total_materials_price || '0.00',
+        materials: materialsArray,
+        total_materials_price: calculatedTotal,
         // German compliance fields
         invoice_type: data.invoice_type || 'final',
         tax_number: data.tax_number || '',
@@ -133,7 +141,12 @@ export default function InvoiceDetailPage({ params }) {
       setError(null);
     } catch (err) {
       console.error('Error fetching invoice:', err);
-      setError('Fehler beim Laden der Rechnung. Bitte versuchen Sie es später erneut.');
+      const errorMessage = err.message.includes('404') 
+        ? 'Rechnung nicht gefunden.'
+        : err.message.includes('403') 
+        ? 'Keine Berechtigung für diese Rechnung.'
+        : 'Fehler beim Laden der Rechnung. Bitte versuchen Sie es später erneut.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -187,6 +200,29 @@ export default function InvoiceDetailPage({ params }) {
     }
   };
 
+  const fetchCraftsmanData = async () => {
+    try {
+      const response = await authedFetch('/api/craftsmen/profile');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch craftsman data: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      setCraftsmanData(data);
+    } catch (err) {
+      console.error('Error fetching craftsman data:', err);
+      // Set default craftsman data if fetch fails
+      setCraftsmanData({
+        name: user?.user_metadata?.full_name || 'Handwerker',
+        email: user?.email || '',
+        phone: user?.user_metadata?.phone || '',
+        address: '',
+        tax_number: '',
+        vat_id: ''
+      });
+    }
+  };
+
   // Calculate total price of materials
   const calculateMaterialsTotal = (materials = []) => {
     return materials.reduce((total, material) => {
@@ -200,23 +236,43 @@ export default function InvoiceDetailPage({ params }) {
     const newValue = type === 'checkbox' ? checked : value;
     
     setFormData(prev => {
-      const updated = {
-        ...prev,
-        [name]: newValue
-      };
+      const updatedData = { ...prev, [name]: newValue };
       
-      // Recalculate total when amount or tax changes
-      if (name === 'amount' || name === 'tax_amount') {
-        const amount = parseFloat(name === 'amount' ? newValue : updated.amount) || 0;
-        const taxAmount = parseFloat(name === 'tax_amount' ? newValue : updated.tax_amount) || 0;
-        const materialsPrice = parseFloat(updated.total_materials_price) || 0;
-        
-        // Total = service amount + tax + materials
-        updated.total_amount = (amount + taxAmount + materialsPrice).toFixed(2);
+      // Special handling for VAT exempt, amount, and tax_amount changes
+      if (name === 'vat_exempt' || name === 'amount') {
+        return handleVatChange(updatedData);
       }
       
-      return updated;
+      // Special handling for manual tax_amount changes - recalculate total
+      if (name === 'tax_amount') {
+        const amount = parseFloat(updatedData.amount) || 0;
+        const materialTotal = parseFloat(updatedData.total_materials_price) || 0;
+        const taxAmount = parseFloat(updatedData.tax_amount) || 0;
+        const subtotal = amount + materialTotal;
+        updatedData.total_amount = (subtotal + taxAmount).toFixed(2);
+        return updatedData;
+      }
+      
+      return updatedData;
     });
+  };
+
+  // Handle VAT calculations when amount or vat_exempt changes
+  const handleVatChange = (data) => {
+    const amount = parseFloat(data.amount) || 0;
+    const materialTotal = parseFloat(data.total_materials_price) || 0;
+    const subtotal = amount + materialTotal;
+    
+    if (data.vat_exempt) {
+      data.tax_amount = '0.00';
+      data.total_amount = subtotal.toFixed(2);
+    } else {
+      const taxAmount = subtotal * 0.19; // 19% VAT
+      data.tax_amount = taxAmount.toFixed(2);
+      data.total_amount = (subtotal + taxAmount).toFixed(2);
+    }
+    
+    return data;
   };
 
   // Handle materials selection changes
@@ -451,146 +507,294 @@ export default function InvoiceDetailPage({ params }) {
             <>
               {editing ? (
                 <div className="bg-[#2a2a2a]/70 backdrop-blur-md rounded-2xl shadow-xl border border-[#2a2a2a] overflow-hidden">
-                  <form onSubmit={handleSubmit}>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Customer Selection */}
-                      <div className="col-span-1 md:col-span-2">
-                        <label className="block text-sm font-medium mb-1">
-                          Kunde *
-                        </label>
-                        <select
-                          name="customer_id"
-                          value={formData.customer_id}
-                          onChange={handleChange}
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
-                          required
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-white mb-6">Rechnung bearbeiten</h3>
+                    <form onSubmit={handleSubmit}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        
+                        {/* Customer Selection */}
+                        <div className="col-span-1 md:col-span-2">
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Kunde *
+                          </label>
+                          <select
+                            name="customer_id"
+                            value={formData.customer_id}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                            required
+                          >
+                            <option value="">Kunde auswählen</option>
+                            {customers.map(customer => (
+                              <option key={customer.id} value={customer.id}>
+                                {customer.name} {customer.email ? `(${customer.email})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Invoice Type */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Rechnungstyp
+                          </label>
+                          <select
+                            name="invoice_type"
+                            value={formData.invoice_type}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          >
+                            <option value="final">Schlussrechnung</option>
+                            <option value="partial">Teilrechnung</option>
+                            <option value="down_payment">Anzahlungsrechnung</option>
+                          </select>
+                        </div>
+
+                        {/* Issue Date */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Rechnungsdatum *
+                          </label>
+                          <input
+                            type="date"
+                            name="issue_date"
+                            value={formData.issue_date}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                            required
+                          />
+                        </div>
+
+                        {/* Service Date */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Leistungsdatum
+                          </label>
+                          <input
+                            type="date"
+                            name="service_date"
+                            value={formData.service_date}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          />
+                        </div>
+
+                        {/* Due Date */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Fälligkeitsdatum
+                          </label>
+                          <input
+                            type="date"
+                            name="due_date"
+                            value={formData.due_date}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          />
+                        </div>
+
+                        {/* Payment Terms */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Zahlungsziel (Tage)
+                          </label>
+                          <input
+                            type="number"
+                            name="payment_terms_days"
+                            value={formData.payment_terms_days}
+                            onChange={handleChange}
+                            min="1"
+                            max="365"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          />
+                        </div>
+
+                        {/* Location */}
+                        <div className="col-span-1 md:col-span-2">
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Arbeitsort
+                          </label>
+                          <input
+                            type="text"
+                            name="location"
+                            value={formData.location}
+                            onChange={handleChange}
+                            placeholder="z.B. Musterstraße 123, 12345 Berlin"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          />
+                        </div>
+
+                        {/* Materials Section */}
+                        <div className="col-span-1 md:col-span-2">
+                          <label className="block text-sm font-medium mb-2 text-gray-300">
+                            Materialien
+                          </label>
+                          <MaterialSelector
+                            selectedMaterials={formData.materials}
+                            onChange={handleMaterialsChange}
+                            className="mb-4"
+                          />
+                          <div className="text-right">
+                            <span className="text-sm text-gray-400">
+                              Materialien Gesamt: <span className="text-[#ffcb00] font-medium">€{formData.total_materials_price}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Service Amount */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Dienstleistung (€) *
+                          </label>
+                          <input
+                            type="number"
+                            name="amount"
+                            value={formData.amount}
+                            onChange={handleChange}
+                            step="0.01"
+                            min="0"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                            required
+                          />
+                        </div>
+
+                        {/* VAT Exempt Checkbox */}
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            name="vat_exempt"
+                            checked={formData.vat_exempt}
+                            onChange={handleChange}
+                            className="mr-2 h-4 w-4 text-[#ffcb00] focus:ring-[#ffcb00] border-gray-600 rounded bg-gray-800"
+                          />
+                          <label className="text-sm text-gray-300">
+                            MwSt.-befreit (Kleinunternehmer)
+                          </label>
+                        </div>
+
+                        {/* Tax Amount */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            MwSt. Betrag (€)
+                          </label>
+                          <input
+                            type="number"
+                            name="tax_amount"
+                            value={formData.tax_amount}
+                            onChange={handleChange}
+                            step="0.01"
+                            min="0"
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                            readOnly={formData.vat_exempt}
+                          />
+                        </div>
+
+                        {/* Total Amount */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Gesamtbetrag (€) *
+                          </label>
+                          <input
+                            type="number"
+                            name="total_amount"
+                            value={formData.total_amount}
+                            step="0.01"
+                            min="0"
+                            className="w-full bg-gray-700 border border-gray-600 rounded-xl px-4 py-2 text-white font-medium"
+                            readOnly
+                          />
+                          <p className="text-xs text-gray-400 mt-1">
+                            Automatisch berechnet: Dienstleistung + Materialien + MwSt.
+                          </p>
+                        </div>
+
+                        {/* Status */}
+                        <div>
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Status
+                          </label>
+                          <select
+                            name="status"
+                            value={formData.status}
+                            onChange={handleChange}
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                          >
+                            <option value="pending">Ausstehend</option>
+                            <option value="paid">Bezahlt</option>
+                            <option value="overdue">Überfällig</option>
+                            <option value="cancelled">Storniert</option>
+                          </select>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="col-span-1 md:col-span-2">
+                          <label className="block text-sm font-medium mb-1 text-gray-300">
+                            Notizen / Beschreibung
+                          </label>
+                          <textarea
+                            name="notes"
+                            value={formData.notes}
+                            onChange={handleChange}
+                            rows="4"
+                            placeholder="Beschreibung der erbrachten Leistungen..."
+                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white resize-none"
+                          />
+                        </div>
+
+                        {/* German Compliance Fields */}
+                        <div className="col-span-1 md:col-span-2 border-t border-gray-700 pt-4 mt-4">
+                          <h4 className="text-lg font-medium text-white mb-4">Deutsche Steuerfelder (Optional)</h4>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium mb-1 text-gray-300">
+                                Steuernummer
+                              </label>
+                              <input
+                                type="text"
+                                name="tax_number"
+                                value={formData.tax_number}
+                                onChange={handleChange}
+                                placeholder="z.B. 123/456/78901"
+                                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium mb-1 text-gray-300">
+                                USt-IdNr.
+                              </label>
+                              <input
+                                type="text"
+                                name="vat_id"
+                                value={formData.vat_id}
+                                onChange={handleChange}
+                                placeholder="z.B. DE123456789"
+                                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-8 flex justify-end space-x-3">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(false)}
+                          className="px-6 py-2.5 border border-gray-600 rounded-xl text-gray-300 hover:bg-gray-800 transition-colors"
                         >
-                          <option value="">Kunde auswählen</option>
-                          {customers.map(customer => (
-                            <option key={customer.id} value={customer.id}>
-                              {customer.name} {customer.email ? `(${customer.email})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      {/* Amount */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Betrag (€) *
-                        </label>
-                        <input
-                          type="number"
-                          name="amount"
-                          value={formData.amount}
-                          onChange={handleChange}
-                          step="0.01"
-                          min="0"
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
-                          required
-                        />
-                      </div>
-                      
-                      {/* Tax Amount */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          MwSt. Betrag (€)
-                        </label>
-                        <input
-                          type="number"
-                          name="tax_amount"
-                          value={formData.tax_amount}
-                          onChange={handleChange}
-                          step="0.01"
-                          min="0"
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
-                        />
-                      </div>
-                      
-                      {/* Total Amount (calculated) */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Gesamtbetrag (€) *
-                        </label>
-                        <input
-                          type="number"
-                          name="total_amount"
-                          value={formData.total_amount}
-                          onChange={handleChange}
-                          step="0.01"
-                          min="0"
-                          className="w-full bg-[#1e3a5f] border border-[#2a4d76] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#e91e63] bg-opacity-50"
-                          required
-                          readOnly
-                        />
-                        <p className="text-xs text-gray-400 mt-1">
-                          Automatisch berechnet aus Betrag + MwSt.
-                        </p>
-                      </div>
-                      
-                      {/* Due Date */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Fälligkeitsdatum
-                        </label>
-                        <input
-                          type="date"
-                          name="due_date"
-                          value={formData.due_date}
-                          onChange={handleChange}
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
-                        />
-                      </div>
-                      
-                      {/* Status */}
-                      <div>
-                        <label className="block text-sm font-medium mb-1">
-                          Status
-                        </label>
-                        <select
-                          name="status"
-                          value={formData.status}
-                          onChange={handleChange}
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
+                          Abbrechen
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={submitting}
+                          className="px-6 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
                         >
-                          <option value="pending">Ausstehend</option>
-                          <option value="paid">Bezahlt</option>
-                          <option value="overdue">Überfällig</option>
-                        </select>
+                          {submitting ? 'Speichern...' : 'Änderungen speichern'}
+                        </button>
                       </div>
-                      
-                      {/* Notes */}
-                      <div className="col-span-1 md:col-span-2">
-                        <label className="block text-sm font-medium mb-1">
-                          Notizen
-                        </label>
-                        <textarea
-                          name="notes"
-                          value={formData.notes}
-                          onChange={handleChange}
-                          rows="4"
-                          className="w-full bg-[#2a2a2a]/50 border border-[#2a2a2a] rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] focus:border-transparent transition-all duration-200"
-                        ></textarea>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-6 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setEditing(false)}
-                        className="px-5 py-2.5 border border-white/20 rounded-xl text-white hover:bg-white/5 transition-colors"
-                      >
-                        Abbrechen
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={submitting}
-                        className="px-5 py-2.5 bg-[#ffcb00] hover:bg-[#e6b800] text-black font-medium rounded-xl shadow-lg hover:shadow-xl focus:outline-none transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:transform-none"
-                      >
-                        {submitting ? 'Speichern...' : 'Änderungen speichern'}
-                      </button>
-                    </div>
-                  </form>
+                    </form>
+                  </div>
                 </div>
               ) : (
                 <div className="bg-[#2a2a2a]/70 backdrop-blur-md rounded-2xl shadow-xl border border-[#2a2a2a] overflow-hidden">
