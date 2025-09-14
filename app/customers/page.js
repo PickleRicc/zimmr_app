@@ -38,10 +38,11 @@ export default function CustomersPage() {
         const res = await fetcherRef.current('/api/customers');
         if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
         const responseJson = await res.json();
-        // Handle new standardized API response format
-        const data = responseJson.data || (res.status === 404 ? [] : responseJson);
-        console.log(`Customers page - Fetched ${data.length} customers`);
-        setCustomers(data);
+        // Handle new paginated API response format
+        const responseData = responseJson.data || responseJson;
+        const data = responseData.customers || (res.status === 404 ? [] : responseData);
+        console.log(`Customers page - Fetched ${Array.isArray(data) ? data.length : 0} customers`);
+        setCustomers(Array.isArray(data) ? data : []);
         setSuccess(''); // reset any prior success
       } catch (e) {
         console.error('Customers page - Error fetching customers:', e);

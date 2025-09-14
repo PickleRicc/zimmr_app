@@ -31,8 +31,11 @@ export async function GET(req) {
     
     const { searchParams } = new URL(req.url);
     const customerId = searchParams.get('id');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = (page - 1) * limit;
     
-    console.log(`${ROUTE_NAME} - Request parameters:`, customerId ? `id: ${customerId}` : 'listing all');
+    console.log(`${ROUTE_NAME} - Request parameters:`, customerId ? `id: ${customerId}` : `listing all (page: ${page}, limit: ${limit})`);
     
     const craftsmanId = await getOrCreateCraftsmanId(user, supabase, ROUTE_NAME);
     if (!craftsmanId) {
@@ -59,18 +62,59 @@ export async function GET(req) {
     } else {
       console.log(`${ROUTE_NAME} - Fetching all customers for craftsman: ${craftsmanId}`);
       
-      const { data, error } = await supabase
+      // Get total count for pagination
+      const { count: totalCount, error: countError } = await supabase
+        .from('customers')
+        .select('*', { count: 'exact', head: true })
+        .eq('craftsman_id', craftsmanId);
+
+      if (countError) {
+        return handleApiError(countError, 'Failed to get customer count', 500, ROUTE_NAME);
+      }
+
+      const { data: customers, error } = await supabase
         .from('customers')
         .select('*')
         .eq('craftsman_id', craftsmanId)
-        .order('name', { ascending: true });
+        .order('name', { ascending: true })
+        .range(offset, offset + limit - 1);
         
       if (error) {
         return handleApiError(error, 'Failed to fetch customers', 500, ROUTE_NAME);
       }
+
+      // Get document counts for each customer
+      const customersWithCounts = await Promise.all(
+        (customers || []).map(async (customer) => {
+          const { count, error: countError } = await supabase
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+            .eq('customer_id', customer.id)
+            .eq('craftsman_id', craftsmanId)
+            .eq('status', 'active')
+            .eq('is_latest_version', true);
+          
+          return {
+            ...customer,
+            document_count: countError ? 0 : (count || 0)
+          };
+        })
+      );
       
-      console.log(`${ROUTE_NAME} - Successfully fetched ${data ? data.length : 0} customers`);
-      return handleApiSuccess(data || [], 'Customers retrieved successfully');
+      const totalPages = Math.ceil(totalCount / limit);
+      
+      console.log(`${ROUTE_NAME} - Successfully fetched ${customers ? customers.length : 0} customers with document counts (page ${page}/${totalPages})`);
+      return handleApiSuccess({
+        customers: customersWithCounts,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1
+        }
+      }, 'Customers retrieved successfully');
     }
   } catch (error) {
     return handleApiError(error, 'Server error', 500, ROUTE_NAME);

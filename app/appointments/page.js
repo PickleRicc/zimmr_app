@@ -235,7 +235,12 @@ export default function AppointmentsPage() {
                       <div>
                         <p className="text-lg font-semibold text-white">{customers[appt.customer_id]?.name || 'Kunde'} – {formatDate(appt.scheduled_at)}</p>
                         <p className={`inline-block mt-1 px-2 py-0.5 text-xs rounded ${statusClass(appt.status, appt.approval_status, appt.is_private)}`}>
-                          {appt.approval_status === 'pending' ? 'Ausstehend' : appt.approval_status === 'rejected' ? 'Abgelehnt' : appt.status}
+                          {appt.approval_status === 'pending' ? 'Ausstehend' : 
+                           appt.approval_status === 'rejected' ? 'Abgelehnt' : 
+                           appt.status === 'completed' ? 'Abgeschlossen' :
+                           appt.status === 'cancelled' ? 'Storniert' :
+                           appt.status === 'confirmed' ? 'Bestätigt' :
+                           appt.status === 'scheduled' ? 'Geplant' : appt.status}
                         </p>
                       </div>
                       <div className="mt-3 sm:mt-0 flex space-x-2 text-sm">

@@ -1001,7 +1001,12 @@ export default function InvoiceDetailPage({ params }) {
                                 appointment.status === 'cancelled' ? 'bg-red-900/30 text-red-400 border border-red-800/50' :
                                 'bg-[#2a2a2a]/70 text-[#ffcb00] border border-[#2a2a2a]'
                               }`}>
-                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                {appointment.status === 'completed' ? 'Abgeschlossen' : 
+                                 appointment.status === 'cancelled' ? 'Storniert' : 
+                                 appointment.status === 'confirmed' ? 'Bestätigt' : 
+                                 appointment.status === 'scheduled' ? 'Geplant' : 
+                                 appointment.status === 'pending' ? 'Ausstehend' : 
+                                 appointment.status?.charAt(0).toUpperCase() + appointment.status?.slice(1)}
                               </span>
                             </div>
                             {appointment.service_type && (
@@ -1021,7 +1026,7 @@ export default function InvoiceDetailPage({ params }) {
                                 href={`/appointments/${appointment.id}`}
                                 className="text-sm text-[#ffcb00] hover:text-[#e6b800] transition-colors flex items-center w-fit"
                               >
-                                <span>TerminDetails anzeigen</span>
+                                <span>Termin-Details anzeigen</span>
                                 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                                 </svg>

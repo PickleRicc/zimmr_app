@@ -17,6 +17,7 @@ export default function Home() {
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [customerCount, setCustomerCount] = useState(0);
   const [invoiceCount, setInvoiceCount] = useState(0);
+  const [documentCount, setDocumentCount] = useState(0);
   const [financeStats, setFinanceStats] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(true);
 
@@ -94,6 +95,47 @@ export default function Home() {
     }
   };
 
+  // Function to fetch document count
+  const loadDocumentCount = async () => {
+    try {
+      console.log('Dashboard: Fetching document count...');
+      
+      // First get the craftsman data to get the craftsman_id
+      const craftsmanRes = await fetcher('/api/craftsmen');
+      if (!craftsmanRes.ok) {
+        console.error('Dashboard: Failed to fetch craftsman data for documents');
+        return;
+      }
+      
+      const craftsmanResponse = await craftsmanRes.json();
+      // Handle both wrapped and direct response formats
+      const craftsmanData = craftsmanResponse.data || craftsmanResponse;
+      const craftsmanId = craftsmanData?.id;
+      
+      console.log('Dashboard: Craftsman data for documents:', craftsmanData);
+      console.log('Dashboard: Craftsman ID for documents:', craftsmanId);
+      
+      if (!craftsmanId) {
+        console.error('Dashboard: No craftsman ID available for documents');
+        return;
+      }
+      
+      const response = await fetcher(`/api/documents?craftsman_id=${craftsmanId}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const documents = data.data || data;
+        const count = Array.isArray(documents) ? documents.length : 0;
+        console.log('Dashboard: Document count received:', count);
+        setDocumentCount(count);
+      } else {
+        console.error('Dashboard: Failed to fetch documents:', response.status);
+      }
+    } catch (err) {
+      console.error('Dashboard: Error fetching document count:', err);
+    }
+  };
+
   useEffect(() => {
     const loadDashboard = async () => {
       if (authLoading) {
@@ -113,6 +155,7 @@ export default function Home() {
         loadFinanceStats(); // Load finance stats
         loadCustomerCount(); // Load customer count
         loadInvoiceCount(); // Load invoice count
+        loadDocumentCount(); // Load document count
       } catch (error) {
         console.error('Error getting craftsman ID:', error);
         setError('Fehler bei der Benutzerauthentifizierung. Bitte versuchen Sie es später erneut.');
@@ -373,7 +416,7 @@ export default function Home() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
                 <div className="bg-white/5 backdrop-blur-xl rounded-xl p-6 border border-white/10 transition-all duration-300 hover:bg-white/10">
                   <div className="flex items-center mb-4">
                     <div className="p-3 bg-[#ffcb00]/20 rounded-full mr-4">
@@ -427,6 +470,25 @@ export default function Home() {
                   <p className="text-white/60 mb-4">Kundenrechnungen</p>
                   <Link href="/invoices" className="text-[#ffcb00] hover:underline flex items-center text-sm">
                     Alle Rechnungen anzeigen
+                    <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                  </Link>
+                </div>
+                
+                <div className="bg-white/5 backdrop-blur-xl rounded-xl p-6 border border-white/10 transition-all duration-300 hover:bg-white/10">
+                  <div className="flex items-center mb-4">
+                    <div className="p-3 bg-[#ffcb00]/20 rounded-full mr-4">
+                      <svg className="w-6 h-6 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
+                      </svg>
+                    </div>
+                    <h2 className="text-xl font-semibold text-white">Dokumente</h2>
+                  </div>
+                  <div className="text-3xl font-bold text-white mb-2">{documentCount}</div>
+                  <p className="text-white/60 mb-4">Verwaltete Dokumente</p>
+                  <Link href="/documents" className="text-[#ffcb00] hover:underline flex items-center text-sm">
+                    Alle Dokumente anzeigen
                     <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
                     </svg>

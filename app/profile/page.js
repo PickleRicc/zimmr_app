@@ -65,7 +65,7 @@ export default function ProfilePage() {
         populate(data);
       } catch (err) {
         console.error(err);
-        setError(err.message || "Failed to load your profile.");
+        setError(err.message || "Fehler beim Laden Ihres Profils.");
       } finally {
         setLoading(false);
       }
@@ -120,7 +120,7 @@ export default function ProfilePage() {
       const responseData = await res.json();
       
       // Use API message for success feedback if available
-      const successMessage = responseData.message || "Profile saved!";
+      const successMessage = responseData.message || "Profil gespeichert!";
       setSuccess(successMessage);
       
       // Update profile data if returned in the response
@@ -131,7 +131,7 @@ export default function ProfilePage() {
       setTimeout(() => setSuccess(""), 4000);
     } catch (err) {
       console.error(err);
-      setError(err.message || "Save failed");
+      setError(err.message || "Speichern fehlgeschlagen");
     } finally {
       setSaving(false);
     }
@@ -152,7 +152,7 @@ export default function ProfilePage() {
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#121212] to-[#1a1a1a]">
-        <span className="text-white">Loading…</span>
+        <span className="text-white">Lädt…</span>
       </div>
     );
   }
@@ -162,13 +162,13 @@ export default function ProfilePage() {
       <Header />
       <div className="min-h-screen bg-gradient-to-b from-[#121212] to-[#1a1a1a] px-4 py-8">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Profile Settings</h1>
+        <h1 className="text-3xl font-bold text-white mb-6">Profil-Einstellungen</h1>
 
         {/* Tabs */}
         <div className="flex bg-white/5 rounded-lg mb-8 overflow-hidden">
           <TabButton id="details">Details</TabButton>
-          <TabButton id="availability">Availability</TabButton>
-          <TabButton id="security">Security</TabButton>
+          <TabButton id="availability">Verfügbarkeit</TabButton>
+          <TabButton id="security">Sicherheit</TabButton>
         </div>
 
         {error && (
@@ -182,16 +182,16 @@ export default function ProfilePage() {
         {activeTab === "details" && (
           <div className="space-y-6 bg-white/5 p-6 rounded-lg border border-white/10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Field label="Display Name" name="name" value={form.name} onChange={handleChange} />
-              <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} />
+              <Field label="Anzeigename" name="name" value={form.name} onChange={handleChange} />
+              <Field label="Telefon" name="phone" value={form.phone} onChange={handleChange} />
               <Field
-                label="Specialty"
+                label="Fachgebiet"
                 name="specialty"
                 value={form.specialty}
                 onChange={handleChange}
                 className="md:col-span-2"
               />
-              <Field label="Email" value={user?.email || ""} disabled />
+              <Field label="E-Mail" value={user?.email || ""} disabled />
             </div>
             <div className="text-right">
               <SaveButton onClick={handleSave} saving={saving} />
@@ -203,7 +203,7 @@ export default function ProfilePage() {
         {activeTab === "availability" && (
           <div className="bg-white/5 p-6 rounded-lg border border-white/10">
             <p className="text-white/70 mb-4">
-              Quick JSON editor for now — replace with slot picker later.
+              Schneller JSON-Editor für jetzt — später durch Zeitslot-Auswahl ersetzen.
             </p>
             <textarea
               className="w-full h-60 p-3 rounded bg-black/50 text-white text-sm font-mono"
@@ -224,12 +224,12 @@ export default function ProfilePage() {
         {/* --------------- Security Tab --------------- */}
         {activeTab === "security" && (
           <div className="bg-white/5 p-6 rounded-lg border border-white/10 space-y-4 text-white/90">
-            <p>Use the <span className="text-[${ACCENT}]">Reset Password</span> link on the login page to change your password.</p>
+            <p>Verwenden Sie den <span className="text-[${ACCENT}]">Passwort zurücksetzen</span> Link auf der Anmeldeseite, um Ihr Passwort zu ändern.</p>
             <button
               className="px-4 py-2 rounded bg-transparent border border-white hover:bg-white/10"
               onClick={() => router.push("/auth/reset-password")}
             >
-              Go to Reset Password
+              Passwort zurücksetzen
             </button>
           </div>
         )}
@@ -263,7 +263,7 @@ function SaveButton({ onClick, saving }) {
       disabled={saving}
       className="px-6 py-2 rounded bg-[#ffcb00] text-black font-medium disabled:opacity-50"
     >
-      {saving ? "Saving…" : "Save"}
+      {saving ? "Speichern…" : "Speichern"}
     </button>
   );
 }

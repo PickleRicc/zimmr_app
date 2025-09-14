@@ -2,19 +2,34 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useAuthedFetch } from '../../lib/utils/useAuthedFetch';
 
 export default function FinanceCard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const fetcher = useAuthedFetch();
 
   useEffect(() => {
-    // TODO: implement real finance stats endpoint
-    fetch('/api/finances/stats?period=month')
-      .then(res => (res.ok ? res.json() : null))
-      .then(data => setStats(data || null))
-      .catch(() => setError('Kann Finanzen nicht laden'))
-      .finally(() => setLoading(false));
+    const loadFinanceStats = async () => {
+      try {
+        setLoading(true);
+        const response = await fetcher('/api/finances');
+        if (!response.ok) {
+          throw new Error(`HTTP Error ${response.status}`);
+        }
+        const responseData = await response.json();
+        const financeData = responseData.data || responseData;
+        setStats(financeData);
+      } catch (err) {
+        console.error('FinanceCard: Error fetching finance stats:', err);
+        setError('Kann Finanzen nicht laden');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFinanceStats();
   }, []);
 
   const progress = stats?.goal && stats.totalRevenue

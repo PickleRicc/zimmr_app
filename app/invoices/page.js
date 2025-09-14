@@ -396,7 +396,11 @@ export default function InvoicesPage() {
                       <div className="text-right">
                         <div className="text-white text-xl font-semibold">€{parseFloat(invoice.total_amount).toFixed(2)}</div>
                         <span className={`text-sm px-2 py-0.5 rounded ${getStatusBadgeClass(invoice.status)}`}>
-                          {invoice.status?.charAt(0).toUpperCase() + invoice.status?.slice(1) || 'Ausstehend'}
+                          {invoice.status === 'paid' ? 'Bezahlt' : 
+                           invoice.status === 'overdue' ? 'Überfällig' : 
+                           invoice.status === 'pending' ? 'Ausstehend' : 
+                           invoice.status === 'cancelled' ? 'Storniert' : 
+                           invoice.status === 'draft' ? 'Entwurf' : 'Ausstehend'}
                         </span>
                       </div>
                     </div>

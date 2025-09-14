@@ -686,9 +686,8 @@ export default function AppointmentDetailPage() {
                 id="duration"
                 type="number"
                 min="1"
-                value={editForm.duration}
-                onChange={handleEditFormChange}
-                name="duration"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
                 className="w-full p-3 border border-dark-border rounded-xl bg-dark text-white focus:ring-2 focus:ring-primary focus:border-primary transition-all"
               />
             </div>
@@ -700,9 +699,8 @@ export default function AppointmentDetailPage() {
               <input
                 id="location"
                 type="text"
-                value={editForm.location}
-                onChange={handleEditFormChange}
-                name="location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
                 className="w-full p-3 border border-dark-border rounded-xl bg-dark text-white focus:ring-2 focus:ring-primary focus:border-primary transition-all"
               />
             </div>

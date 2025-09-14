@@ -55,9 +55,17 @@ export default function NewAppointmentPage() {
         // Handle standardized API response format
         const response = res.status === 404 ? { data: [] } : await res.json();
         
-        // Extract data, supporting both new standardized and legacy formats
-        const customerData = response.data !== undefined ? response.data : response;
-        const loadedCustomers = Array.isArray(customerData) ? customerData : [];
+        // Extract data, supporting both new paginated and legacy formats
+        const data = response.data !== undefined ? response.data : response;
+        let loadedCustomers = [];
+        
+        if (data && data.customers && Array.isArray(data.customers)) {
+          // New paginated format
+          loadedCustomers = data.customers;
+        } else if (Array.isArray(data)) {
+          // Legacy format
+          loadedCustomers = data;
+        }
         setCustomers(loadedCustomers);
         
         // Auto-fill location if customer is pre-selected from URL
