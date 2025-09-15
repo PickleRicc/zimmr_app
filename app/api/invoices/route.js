@@ -202,6 +202,27 @@ export async function POST(req) {
       return handleApiError(`Error creating invoice: ${error.message}`, 500, ROUTE_NAME);
     }
     
+    // Create corresponding entry in documents registry
+    const { error: docError } = await supabase
+      .from('documents')
+      .insert({
+        craftsman_id: craftsmanId,
+        customer_id: body.customer_id || null,
+        invoice_id: invoice.id,
+        title: invoice.invoice_number_formatted || `Rechnung #${invoice.id}`,
+        description: invoice.notes || '',
+        folder_type: 'invoices',
+        document_type: 'invoice',
+        tags: [],
+        status: 'active',
+        is_latest_version: true
+      });
+
+    if (docError) {
+      console.error('Error creating document registry entry:', docError);
+      // Don't fail the request, just log the error
+    }
+
     console.log(`${ROUTE_NAME} - Successfully created invoice ID: ${invoice.id}`);
     
     return handleApiSuccess(invoice, 'Invoice created successfully', 201);

@@ -23,7 +23,7 @@ export default function InvoiceTestPage() {
           
           <div className="bg-[#132f4c] rounded-xl p-6 mb-6">
             <p className="text-lg mb-4">This is a test page to verify that the Next.js dynamic route structure is working correctly.</p>
-            <p className="mb-4">If you can see this page, it means the route structure is working, and the issue with the invoice detail page is likely related to the API or data fetching.</p>
+            <p className="mb-4">If you can see this page, it means the route structure is working, and the issue with Invoice detail page is likely related to the API or data fetching.</p>
             
             <div className="mt-6">
               <h2 className="text-xl font-semibold mb-4">Test Links:</h2>

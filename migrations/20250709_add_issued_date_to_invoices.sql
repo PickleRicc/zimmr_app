@@ -15,4 +15,4 @@ WHERE issued_date IS NULL;
 CREATE INDEX IF NOT EXISTS idx_invoices_issued_date ON invoices(issued_date);
 
 -- Add comment explaining column purpose
-COMMENT ON COLUMN invoices.issued_date IS 'The date when the invoice was issued to the customer. Used for finance reporting.';
+COMMENT ON COLUMN invoices.issued_date IS 'The date when Invoice was issued to the customer. Used for finance reporting.';

@@ -204,6 +204,26 @@ export async function POST(req) {
       return handleApiError(quoteError, 'Failed to create quote', 500, ROUTE_NAME);
     }
     
+    // Create corresponding entry in documents registry
+    const { error: docError } = await supabase
+      .from('documents')
+      .insert({
+        craftsman_id: craftsmanId,
+        customer_id: body.customer_id || null,
+        quote_id: quoteData.id,
+        title: `Angebot #${quoteData.id}`,
+        description: quoteData.notes || '',
+        folder_type: 'quotes',
+        document_type: 'quote',
+        tags: [],
+        status: 'active'
+      });
+
+    if (docError) {
+      console.error('Error creating document registry entry:', docError);
+      // Don't fail the request, just log the error
+    }
+
     console.log(`${ROUTE_NAME} - Successfully created quote with materials in JSONB field`);
     
     return handleApiSuccess(quoteData, 'Quote created successfully', 201);

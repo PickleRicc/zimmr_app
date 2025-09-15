@@ -46,7 +46,9 @@ export default function CustomerDocumentsPage({ params }) {
   
   const [customer, setCustomer] = useState(null);
   const [documents, setDocuments] = useState([]);
+  const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [customerLoading, setCustomerLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState('');
@@ -78,7 +80,7 @@ export default function CustomerDocumentsPage({ params }) {
     }
   }, [authLoading, user, mounted, resolvedParams.id]);
 
-  // Filter documents based on search and filters
+  // Filter documents from unified registry based on search and filters
   useEffect(() => {
     if (!Array.isArray(documents)) {
       setFilteredDocuments([]);
@@ -87,14 +89,17 @@ export default function CustomerDocumentsPage({ params }) {
 
     let filtered = [...documents];
     
+    // Apply folder filter
     if (selectedFolder !== 'all') {
       filtered = filtered.filter(doc => doc.folder_type === selectedFolder);
     }
     
+    // Apply document type filter
     if (documentTypeFilter !== 'all') {
       filtered = filtered.filter(doc => doc.document_type === documentTypeFilter);
     }
     
+    // Apply search filter
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(doc => 
@@ -157,6 +162,25 @@ export default function CustomerDocumentsPage({ params }) {
       setError('Fehler beim Laden der Dokumente. Bitte versuchen Sie es erneut.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchNotes = async () => {
+    try {
+      setNotesLoading(true);
+      
+      const res = await fetcher(`/api/notes?customer_id=${resolvedParams.id}`);
+      if (!res.ok) {
+        throw new Error('Fehler beim Laden der Notizen');
+      }
+      
+      const data = await res.json();
+      setNotes(Array.isArray(data.notes) ? data.notes : []);
+    } catch (err) {
+      console.error('Error fetching notes:', err);
+      // Don't set error for notes, just log it
+    } finally {
+      setNotesLoading(false);
     }
   };
 
@@ -244,9 +268,11 @@ export default function CustomerDocumentsPage({ params }) {
     return type?.label || documentType;
   };
 
-  const getFolderCount = (folderType) => {
-    if (folderType === 'all') return documents.length;
-    return documents.filter(doc => doc.folder_type === folderType).length;
+  const getFolderCount = (folderKey) => {
+    if (folderKey === 'all') {
+      return documents.length;
+    }
+    return documents.filter(doc => doc.folder_type === folderKey).length;
   };
 
   const getGroupedDocuments = () => {
@@ -374,6 +400,13 @@ export default function CustomerDocumentsPage({ params }) {
                 >
                   <ClipboardDocumentListIcon className="w-4 h-4 mr-2" />
                   Kostenvoranschlag
+                </Link>
+                <Link 
+                  href={`/notes/new?customer_id=${resolvedParams.id}`}
+                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center border border-blue-500/30"
+                >
+                  <PencilSquareIcon className="w-4 h-4 mr-2" />
+                  Neue Notiz
                 </Link>
               </div>
             </div>
@@ -552,9 +585,19 @@ export default function CustomerDocumentsPage({ params }) {
                     <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {docs.map((document, index) => (
-                          <div key={`grouped-${document.id}-${index}`} className="bg-white/5 rounded-lg p-4 border border-white/10 hover:bg-white/10 transition-all">
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex-1">
+                          <Link
+                            key={document.id}
+                            href={document.document_type === 'note' ? `/notes/${document.id}` : `/documents/${document.id}`}
+                            className="group bg-white/5 hover:bg-white/10 rounded-lg p-4 border border-white/10 hover:border-white/20 transition-all duration-200"
+                          >
+                            <div className="flex items-start mb-3">
+                              <div className="flex-shrink-0 mr-3">
+                                {(() => {
+                                  const IconComponent = getDocumentIcon(document.document_type);
+                                  return <IconComponent className="w-6 h-6 text-white/60" />;
+                                })()}
+                              </div>
+                              <div className="flex-1 min-w-0">
                                 <h4 className="text-white font-medium text-base truncate mb-1">{document.title}</h4>
                                 {document.description && (
                                   <p className="text-white/50 text-sm line-clamp-2">{document.description}</p>
@@ -562,10 +605,24 @@ export default function CustomerDocumentsPage({ params }) {
                               </div>
                             </div>
                             
-                            <div className="text-sm text-white/60 mb-3">
-                              <span className="text-white/40">Erstellt:</span>
-                              <div>{formatDate(document.created_at)}</div>
+                            <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+                              <div className="text-white/60">
+                                <span className="text-white/40 text-xs">Typ:</span>
+                                <div className="font-medium">{getDocumentTypeLabel(document.document_type)}</div>
+                              </div>
+                              <div className="text-white/60">
+                                <span className="text-white/40 text-xs">Erstellt:</span>
+                                <div className="font-medium">{formatDate(document.created_at)}</div>
+                              </div>
                             </div>
+                            
+                            {(document.content_data?.total_amount || document.content_data?.amount) && (
+                              <div className="mb-3">
+                                <div className="bg-green-500/20 text-green-400 px-2 py-1 rounded text-sm font-medium inline-block">
+                                  €{parseFloat(document.content_data.total_amount || document.content_data.amount || 0).toFixed(2)}
+                                </div>
+                              </div>
+                            )}
                             
                             {document.tags && document.tags.length > 0 && (
                               <div className="mb-3">
@@ -585,35 +642,39 @@ export default function CustomerDocumentsPage({ params }) {
                             )}
                             
                             <div className="flex gap-2">
-                              <Link 
-                                href={`/documents/${document.id}`}
-                                className="flex-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center"
-                              >
-                                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                </svg>
-                                Details
-                              </Link>
-                              <button
-                                onClick={() => handleGeneratePdf(document)}
-                                disabled={generatingPdf === document.id}
-                                className={`px-3 py-1.5 ${
-                                  generatingPdf === document.id 
-                                    ? 'bg-gray-500/20 text-gray-400 cursor-not-allowed' 
-                                    : 'bg-[#ffcb00] hover:bg-[#e6b800] text-black cursor-pointer'
-                                } text-sm font-medium rounded-lg transition-colors flex items-center justify-center`}
-                              >
-                                {generatingPdf === document.id ? (
-                                  <span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
-                                ) : (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                              {document.document_type !== 'note' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleGeneratePdf(document);
+                                  }}
+                                  disabled={generatingPdf === document.id}
+                                  className="px-3 py-1.5 bg-[#ffcb00]/20 hover:bg-[#ffcb00]/30 text-[#ffcb00] text-sm font-medium rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {generatingPdf === document.id ? (
+                                    <svg className="animate-spin w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                  )}
+                                  PDF
+                                </button>
+                              )}
+                              {document.document_type === 'note' && (
+                                <div className="flex-1 bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-sm font-medium flex items-center justify-center">
+                                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                                   </svg>
-                                )}
-                              </button>
+                                  Notiz
+                                </div>
+                              )}
                             </div>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     </div>
@@ -645,11 +706,11 @@ export default function CustomerDocumentsPage({ params }) {
                     <div className="grid grid-cols-2 gap-2 mb-4 text-sm">
                       <div className="text-white/60">
                         <span className="text-white/40">Typ:</span>
-                        <div className="capitalize">{getDocumentTypeLabel(document.document_type)}</div>
+                        <div className="capitalize font-medium">{getDocumentTypeLabel(document.document_type)}</div>
                       </div>
                       <div className="text-white/60">
                         <span className="text-white/40">Erstellt:</span>
-                        <div>{formatDate(document.created_at)}</div>
+                        <div className="font-medium">{formatDate(document.created_at)}</div>
                       </div>
                     </div>
                     
@@ -673,7 +734,7 @@ export default function CustomerDocumentsPage({ params }) {
                     <div className="flex flex-col sm:flex-row justify-between gap-2 pt-3 border-t border-white/10">
                       <Link 
                         href={`/documents/${document.id}`}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center"
+                        className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-sm font-medium rounded-lg transition-colors flex items-center justify-center"
                       >
                         <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>

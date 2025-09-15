@@ -233,7 +233,7 @@ export default function AppointmentsPage() {
                   filteredAppointments().map(appt => (
                     <div key={appt.id} className="p-4 bg-[#1b1b1b] rounded-xl border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-lg font-semibold text-white">{customers[appt.customer_id]?.name || 'Kunde'} – {formatDate(appt.scheduled_at)}</p>
+                        <p className="text-lg font-semibold text-white">{customers[appt.customer_id]?.name || appt.customers?.name || 'Kunde'} – {formatDate(appt.scheduled_at)}</p>
                         <p className={`inline-block mt-1 px-2 py-0.5 text-xs rounded ${statusClass(appt.status, appt.approval_status, appt.is_private)}`}>
                           {appt.approval_status === 'pending' ? 'Ausstehend' : 
                            appt.approval_status === 'rejected' ? 'Abgelehnt' : 

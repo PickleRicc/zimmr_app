@@ -477,7 +477,33 @@ function InvoicePageContent() {
     }
 
     console.log('Selected appointment:', newlySelectedAppointment);
+    console.log('Available customers:', customers);
+    console.log('Appointment customer_id:', newlySelectedAppointment.customer_id, 'type:', typeof newlySelectedAppointment.customer_id);
+    
     setSelectedAppointment(newlySelectedAppointment);
+
+    // Find the customer - first try from customers array, then from appointment data
+    let matchingCustomer = customers.find(customer => 
+      String(customer.id) === String(newlySelectedAppointment.customer_id)
+    );
+    
+    // If not found in customers array (timing issue), use embedded customer data
+    if (!matchingCustomer && newlySelectedAppointment.customers) {
+      matchingCustomer = newlySelectedAppointment.customers;
+      console.log('Using embedded customer data from appointment');
+      
+      // Add the customer to the customers array if it's not already there
+      setCustomers(prevCustomers => {
+        const customerExists = prevCustomers.some(c => String(c.id) === String(matchingCustomer.id));
+        if (!customerExists) {
+          console.log('Adding embedded customer to customers array');
+          return [...prevCustomers, matchingCustomer];
+        }
+        return prevCustomers;
+      });
+    }
+    
+    console.log('Matching customer found:', matchingCustomer);
 
     // Auto-populate invoice data from appointment
     // Calculate default due date (14 days from now)
@@ -485,10 +511,13 @@ function InvoicePageContent() {
     dueDate.setDate(dueDate.getDate() + 14);
     const formattedDueDate = dueDate.toISOString().split('T')[0];
 
+    const customerIdToSet = String(newlySelectedAppointment.customer_id);
+    console.log('Setting customer_id to:', customerIdToSet);
+
     setFormData(prev => ({
       ...prev,
       // appointment_id is already set
-      customer_id: newlySelectedAppointment.customer_id.toString(),
+      customer_id: customerIdToSet,
       service_date: newlySelectedAppointment.scheduled_at ? new Date(newlySelectedAppointment.scheduled_at).toISOString().split('T')[0] : '',
       location: newlySelectedAppointment.location || prev.location || '', // Keep existing if appointment has none
       notes: newlySelectedAppointment.notes || prev.notes || '', // Keep existing if appointment has none
@@ -499,6 +528,11 @@ function InvoicePageContent() {
       // total_amount: '',
       // vat_exempt: false, // Or keep existing?
     }));
+
+    // Add a small delay to log the updated form data
+    setTimeout(() => {
+      console.log('Form data after appointment selection update:', formData);
+    }, 100);
   };
 
   const handleSubmit = async (e) => {
@@ -870,11 +904,37 @@ function InvoicePageContent() {
                       ) : appointments.length === 0 ? (
                         <option disabled>Keine geeigneten abgeschlossenen Termine gefunden</option>
                       ) : (
-                        appointments.map((appointment) => (
-                          <option key={appointment.id} value={appointment.id}>
-                            {new Date(appointment.scheduled_at).toLocaleDateString()} - {appointment.customer_name} ({appointment.service_type || 'Service'})
-                          </option>
-                        )) // Corrected closing parenthesis for map
+                        appointments.map((appointment) => {
+                          // Get customer name with fallback logic
+                          let customerName = 'Kein Kundenname';
+                          if (appointment.customers) {
+                            customerName = appointment.customers.name || 
+                                         [appointment.customers.first_name, appointment.customers.last_name].filter(Boolean).join(' ').trim() ||
+                                         'Kein Kundenname';
+                          } else if (appointment.customer_name) {
+                            customerName = appointment.customer_name;
+                          } else {
+                            // Fallback: find customer in customers array
+                            const customer = customers.find(c => c.id === appointment.customer_id);
+                            if (customer) {
+                              customerName = customer.name || 
+                                           [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() ||
+                                           'Kein Kundenname';
+                            }
+                          }
+
+                          const appointmentDate = new Date(appointment.scheduled_at);
+                          const dateStr = appointmentDate.toLocaleDateString('de-DE');
+                          const timeStr = appointmentDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                          const serviceType = appointment.service_type || 'Allgemeine Dienstleistung';
+                          const location = appointment.location ? ` - ${appointment.location}` : '';
+
+                          return (
+                            <option key={appointment.id} value={appointment.id}>
+                              {dateStr} {timeStr} | {customerName} | {serviceType}{location}
+                            </option>
+                          );
+                        })
                       )}
                     </select>
                     <p className="text-xs text-gray-400 mt-1">

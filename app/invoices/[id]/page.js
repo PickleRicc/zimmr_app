@@ -106,7 +106,7 @@ export default function InvoiceDetailPage({ params }) {
       console.log('Materials price:', calculatedTotal);
       
       setFormData({
-        customer_id: data.customer_id,
+        customer_id: String(data.customer_id),
         amount: data.amount,
         tax_amount: data.tax_amount || 0,
         total_amount: data.total_amount,
@@ -186,9 +186,24 @@ export default function InvoiceDetailPage({ params }) {
       // Handle standardized API response format
       const responseData = response.status === 404 ? { data: [] } : await response.json();
       
-      // Extract data, supporting both new standardized and legacy formats
-      const data = responseData.data !== undefined ? responseData.data : responseData;
-      setCustomers(Array.isArray(data) ? data : []);
+      // Extract customers array from the response
+      let customersArray = [];
+      if (responseData.data && Array.isArray(responseData.data.customers)) {
+        // New format: { data: { customers: [...], pagination: {...} } }
+        customersArray = responseData.data.customers;
+      } else if (Array.isArray(responseData.customers)) {
+        // Direct format: { customers: [...], pagination: {...} }
+        customersArray = responseData.customers;
+      } else if (Array.isArray(responseData.data)) {
+        // Legacy format: { data: [...] }
+        customersArray = responseData.data;
+      } else if (Array.isArray(responseData)) {
+        // Direct array format: [...]
+        customersArray = responseData;
+      }
+      
+      console.log('Fetched customers:', customersArray);
+      setCustomers(customersArray);
       
       // Log any API message
       if (responseData.message) {
@@ -202,12 +217,13 @@ export default function InvoiceDetailPage({ params }) {
 
   const fetchCraftsmanData = async () => {
     try {
-      const response = await authedFetch('/api/craftsmen/profile');
+      const response = await authedFetch('/api/craftsmen');
       if (!response.ok) {
         throw new Error(`Failed to fetch craftsman data: ${response.statusText}`);
       }
       
-      const data = await response.json();
+      const responseData = await response.json();
+      const data = responseData.data !== undefined ? responseData.data : responseData;
       setCraftsmanData(data);
     } catch (err) {
       console.error('Error fetching craftsman data:', err);
@@ -227,7 +243,7 @@ export default function InvoiceDetailPage({ params }) {
   const calculateMaterialsTotal = (materials = []) => {
     return materials.reduce((total, material) => {
       return total + (parseFloat(material.quantity) || 0) * (parseFloat(material.unit_price) || 0);
-    }, 0).toFixed(2);
+    }, 0);
   };
 
   // Handle form input changes
@@ -279,21 +295,22 @@ export default function InvoiceDetailPage({ params }) {
   const handleMaterialsChange = (materials) => {
     console.log('Materials changed:', materials);
     
-    // Calculate total materials price
+    // Calculate total materials price (returns number)
     const totalMaterialsPrice = calculateMaterialsTotal(materials);
     
     // Update form data with new materials and total
     setFormData(prev => {
       const amount = parseFloat(prev.amount) || 0;
-      const taxAmount = parseFloat(prev.tax_amount) || 0;
-      const materialsPrice = totalMaterialsPrice;
+      const materialTotal = parseFloat(prev.total_materials_price) || 0;
+      const subtotal = amount + totalMaterialsPrice;
+      const taxAmount = prev.vat_exempt ? 0 : subtotal * 0.19;
       
       return {
         ...prev,
         materials: materials,
         total_materials_price: totalMaterialsPrice.toFixed(2),
-        // Recalculate total to include materials
-        total_amount: (amount + taxAmount + materialsPrice).toFixed(2)
+        tax_amount: taxAmount.toFixed(2),
+        total_amount: (subtotal + taxAmount).toFixed(2)
       };
     });
   };
@@ -316,12 +333,18 @@ export default function InvoiceDetailPage({ params }) {
       setSubmitting(true);
       setError(null);
       
-      // Prepare data for submission
+      // Prepare data for submission with proper date handling
       const invoiceData = {
         ...formData,
         amount: parseFloat(formData.amount),
         tax_amount: parseFloat(formData.tax_amount) || 0,
         total_amount: parseFloat(formData.total_amount),
+        // Handle date fields - convert empty strings to null
+        due_date: formData.due_date || null,
+        service_date: formData.service_date || null,
+        issue_date: formData.issue_date || null,
+        service_period_start: formData.service_period_start || null,
+        service_period_end: formData.service_period_end || null,
         // CRITICAL: Explicitly include materials array for backend storage
         materials: Array.isArray(formData.materials) ? formData.materials : [],
         total_materials_price: parseFloat(formData.total_materials_price || 0).toFixed(2)

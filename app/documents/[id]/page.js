@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
@@ -17,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function DocumentDetailPage({ params }) {
+  const documentId = use(params).id;
   const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -39,16 +40,16 @@ export default function DocumentDetailPage({ params }) {
   const { user, loading: authLoading } = useRequireAuth();
 
   useEffect(() => {
-    if (!authLoading && user && params.id) {
+    if (!authLoading && user && documentId) {
       fetchDocument();
     }
-  }, [authLoading, user, params.id]);
+  }, [authLoading, user, documentId]);
 
   const fetchDocument = async () => {
     try {
       setLoading(true);
       
-      const res = await fetcher(`/api/documents/${params.id}`);
+      const res = await fetcher(`/api/documents/${documentId}`);
       if (!res.ok) {
         if (res.status === 404) {
           setError('Dokument nicht gefunden');
@@ -95,7 +96,7 @@ export default function DocumentDetailPage({ params }) {
     try {
       setSaving(true);
       
-      const res = await fetcher(`/api/documents/${params.id}`, {
+      const res = await fetcher(`/api/documents/${documentId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editData)
@@ -152,7 +153,7 @@ export default function DocumentDetailPage({ params }) {
     }
     
     try {
-      const res = await fetcher(`/api/documents/${params.id}`, { method: 'DELETE' });
+      const res = await fetcher(`/api/documents/${documentId}`, { method: 'DELETE' });
       
       if (res.ok) {
         router.push('/documents');
@@ -351,7 +352,7 @@ export default function DocumentDetailPage({ params }) {
             </div>
 
             {/* Linked Items */}
-            {(document?.customers || document?.appointments || document?.quotes || document?.invoices) && (
+            {(document?.customers || document?.appointments || document?.quotes || document?.invoices || document?.notes) && (
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-white mb-4">Verknüpfte Elemente</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -378,7 +379,18 @@ export default function DocumentDetailPage({ params }) {
                   
                   {document?.quotes && (
                     <div className="bg-white/5 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-white/60 mb-2">Kostenvoranschlag</h4>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium text-white/60">Kostenvoranschlag</h4>
+                        <button
+                          onClick={() => router.push(`/quotes/${document.quotes.id}`)}
+                          className="bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 px-3 py-1 rounded text-xs font-medium transition-colors flex items-center"
+                        >
+                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                          </svg>
+                          Öffnen
+                        </button>
+                      </div>
                       <p className="text-white">Kostenvoranschlag #{document.quotes.id}</p>
                       <p className="text-white/60 text-sm">€{parseFloat(document.quotes.amount || 0).toFixed(2)}</p>
                     </div>
@@ -386,9 +398,43 @@ export default function DocumentDetailPage({ params }) {
                   
                   {document?.invoices && (
                     <div className="bg-white/5 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-white/60 mb-2">Rechnung</h4>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium text-white/60">Rechnung</h4>
+                        <button
+                          onClick={() => router.push(`/invoices/${document.invoices.id}`)}
+                          className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 px-3 py-1 rounded text-xs font-medium transition-colors flex items-center"
+                        >
+                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                          </svg>
+                          Öffnen
+                        </button>
+                      </div>
                       <p className="text-white">{document.invoices.invoice_number_formatted || `Rechnung #${document.invoices.id}`}</p>
                       <p className="text-white/60 text-sm">€{parseFloat(document.invoices.total_amount || 0).toFixed(2)}</p>
+                    </div>
+                  )}
+                  
+                  {document?.notes && (
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium text-white/60">Notiz</h4>
+                        <button
+                          onClick={() => router.push(`/notes/${document.notes.id}`)}
+                          className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-3 py-1 rounded text-xs font-medium transition-colors flex items-center"
+                        >
+                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                          </svg>
+                          Öffnen
+                        </button>
+                      </div>
+                      <p className="text-white">{document.notes.title}</p>
+                      <p className="text-white/60 text-sm">
+                        {document.notes.content && document.notes.content.length > 100 
+                          ? `${document.notes.content.substring(0, 100)}...` 
+                          : document.notes.content || 'Keine Vorschau verfügbar'}
+                      </p>
                     </div>
                   )}
                 </div>

@@ -9,7 +9,7 @@ const supabase = createClient(
 // GET /api/documents/[id] - Get single document
 export async function GET(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const { data, error } = await supabase
       .from('documents')
@@ -18,7 +18,8 @@ export async function GET(request, { params }) {
         customers(name, email),
         appointments(id, scheduled_at, notes, location),
         quotes(id, amount),
-        invoices(id, invoice_number_formatted, total_amount)
+        invoices(id, invoice_number_formatted, total_amount),
+        notes(id, title, content)
       `)
       .eq('id', id)
       .single();
@@ -42,7 +43,7 @@ export async function GET(request, { params }) {
 // PUT /api/documents/[id] - Update document
 export async function PUT(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const {
       title,
@@ -86,7 +87,7 @@ export async function PUT(request, { params }) {
 // DELETE /api/documents/[id] - Delete document (soft delete)
 export async function DELETE(request, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const { data, error } = await supabase
       .from('documents')

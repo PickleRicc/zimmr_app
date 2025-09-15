@@ -83,10 +83,11 @@ export async function GET(req) {
         return handleApiError(error, 'Failed to fetch customers', 500, ROUTE_NAME);
       }
 
-      // Get document counts for each customer
+      // Get document counts for each customer from unified registry
       const customersWithCounts = await Promise.all(
         (customers || []).map(async (customer) => {
-          const { count, error: countError } = await supabase
+          // Get total document count from registry
+          const { count: totalDocumentCount, error: totalDocError } = await supabase
             .from('documents')
             .select('*', { count: 'exact', head: true })
             .eq('customer_id', customer.id)
@@ -94,9 +95,42 @@ export async function GET(req) {
             .eq('status', 'active')
             .eq('is_latest_version', true);
           
+          // Get notes count from registry
+          const { count: notesCount, error: notesCountError } = await supabase
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+            .eq('customer_id', customer.id)
+            .eq('craftsman_id', craftsmanId)
+            .eq('document_type', 'note')
+            .eq('status', 'active')
+            .eq('is_latest_version', true);
+          
+          // Get invoices count from registry
+          const { count: invoicesCount, error: invoicesCountError } = await supabase
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+            .eq('customer_id', customer.id)
+            .eq('craftsman_id', craftsmanId)
+            .eq('document_type', 'invoice')
+            .eq('status', 'active')
+            .eq('is_latest_version', true);
+          
+          // Get quotes count from registry
+          const { count: quotesCount, error: quotesCountError } = await supabase
+            .from('documents')
+            .select('*', { count: 'exact', head: true })
+            .eq('customer_id', customer.id)
+            .eq('craftsman_id', craftsmanId)
+            .eq('document_type', 'quote')
+            .eq('status', 'active')
+            .eq('is_latest_version', true);
+          
           return {
             ...customer,
-            document_count: countError ? 0 : (count || 0)
+            document_count: totalDocError ? 0 : (totalDocumentCount || 0),
+            notes_count: notesCountError ? 0 : (notesCount || 0),
+            invoices_count: invoicesCountError ? 0 : (invoicesCount || 0),
+            quotes_count: quotesCountError ? 0 : (quotesCount || 0)
           };
         })
       );

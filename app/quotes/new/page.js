@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -71,6 +71,9 @@ export default function NewQuotePage() {
   const router = useRouter();
   const { user, loading: authLoading } = useRequireAuth();
   const fetcher = useAuthedFetch();
+  
+  // Ref to store customers for immediate access (avoiding React state timing issues)
+  const customersRef = useRef([]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -95,8 +98,12 @@ export default function NewQuotePage() {
         // Persist craftsman UUID in local state for submission
         setFormData(prev => ({ ...prev, craftsman_id: craftsmanData.data.id }));
 
-        // Fetch customers & appointments in parallel
-        await Promise.all([fetchCustomers(), fetchAppointments()]);
+        // Fetch customers first, then appointments to ensure customer data is available
+        const fetchedCustomers = await fetchCustomers();
+        await fetchAppointments();
+        
+        // Store the fetched customers in a ref for immediate access
+        customersRef.current = fetchedCustomers;
 
         // Handle prefill data from time tracking or appointments
         if (typeof window !== 'undefined') {
@@ -170,6 +177,7 @@ export default function NewQuotePage() {
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
+        console.error('Customer fetch failed:', response.status, errorData);
         throw new Error(errorData?.message || `HTTP Error ${response.status}`);
       }
       
@@ -179,15 +187,21 @@ export default function NewQuotePage() {
       
       // Extract data, supporting both new standardized and legacy formats
       const customersData = responseData.data !== undefined ? responseData.data : responseData;
-      setCustomers(Array.isArray(customersData) ? customersData : []);
+      const customersArray = Array.isArray(customersData) ? customersData : [];
+      
+      console.log('Setting customers array:', customersArray);
+      setCustomers(customersArray);
       
       // Log any API message
       if (responseData.message) {
         console.log('Customers API Message:', responseData.message);
       }
+      
+      return customersArray; // Return the customers for chaining
     } catch (err) {
       console.error('Fehler beim Laden der Kunden:', err);
       setError(err.message || 'Kunden konnten nicht geladen werden. Bitte versuchen Sie es später erneut.');
+      return []; // Return empty array on error
     } finally {
       setLoading(false);
     }
@@ -196,35 +210,30 @@ export default function NewQuotePage() {
   const fetchAppointments = async () => {
     try {
       setLoadingAppointments(true);
-      // Fetch all appointments for this craftsman without filtering by status or invoice association
-      const response = await fetcher('/api/appointments');
+      console.log('Fetching appointments');
+      const response = await fetcher('/api/appointments?has_invoice=false');
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || `HTTP Error ${response.status}`);
+        throw new Error(errorData?.message || `HTTP ${response.status}`);
       }
       
       // Handle standardized API response format
       const responseData = await response.json();
-      console.log('Termine geladen:', responseData);
       
       // Extract data, supporting both new standardized and legacy formats
-      const appointmentsData = responseData.data !== undefined ? responseData.data : responseData;
-      const appointmentsArray = Array.isArray(appointmentsData) ? appointmentsData : [];
-      
-
-      
-      setAppointments(appointmentsArray);
-      // Initialize filtered appointments with all appointments
-      setFilteredAppointments(appointmentsArray);
+      const data = responseData.data !== undefined ? responseData.data : responseData;
+      console.log('Fetched appointments:', data);
+      setAppointments(Array.isArray(data) ? data : []);
       
       // Log any API message
       if (responseData.message) {
-        console.log('API Message:', responseData.message);
+        console.log('Appointments API Message:', responseData.message);
       }
     } catch (err) {
-      console.error('Fehler beim Laden der Termine:', err);
-      // Non-critical error, don't set error state to avoid blocking quote creation
+      console.error('Error fetching appointments:', err);
+      // Don't set the main error here to avoid overriding customer/quote fetch errors
+      setAppointments([]); // Set to empty array on error
     } finally {
       setLoadingAppointments(false);
     }
@@ -279,31 +288,7 @@ export default function NewQuotePage() {
     }
   };
 
-  const handleCustomerChange = (e) => {
-    const customerId = e.target.value;
-  
-    // Update form data with selected customer
-    setFormData(prev => ({
-      ...prev,
-      customer_id: customerId,
-      // Clear appointment selection when customer changes
-      appointment_id: ''
-    }));
-  
-    // Clear selected appointment
-    setSelectedAppointment(null);
-  
-    // Filter appointments by selected customer
-    if (customerId) {
-      const customerAppointments = appointments.filter(appointment => 
-        String(appointment.customer_id) === String(customerId)
-      );
-      setFilteredAppointments(customerAppointments);
-    } else {
-      // If no customer selected, show all appointments
-      setFilteredAppointments(appointments);
-    }
-  };
+  // Remove the old customer filtering logic since we're using the same logic as invoices
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -458,99 +443,77 @@ export default function NewQuotePage() {
 
   const handleAppointmentChange = (e) => {
     const appointmentId = e.target.value;
-    console.log('=== APPOINTMENT SELECTION DEBUG ===');
-    console.log('Raw appointmentId:', appointmentId);
-    console.log('appointmentId type:', typeof appointmentId);
-    console.log('All appointments:', appointments);
-    console.log('Filtered appointments:', filteredAppointments);
-    console.log('All customers:', customers);
-    
+    setFormData(prev => ({ ...prev, appointment_id: appointmentId })); // Update form state immediately
+
     if (!appointmentId) {
-      console.log('No appointment selected (empty value)');
       setSelectedAppointment(null);
-      setFormData(prev => ({ ...prev, appointment_id: '' }));
+      return; // No appointment selected
+    }
+
+    // Find the selected appointment
+    const newlySelectedAppointment = appointments.find(
+      appointment => appointment.id.toString() === appointmentId
+    );
+
+    if (!newlySelectedAppointment) {
+      setSelectedAppointment(null);
       return;
     }
+
+    console.log('Selected appointment:', newlySelectedAppointment);
+    console.log('Available customers:', customers);
+    console.log('Appointment customer_id:', newlySelectedAppointment.customer_id, 'type:', typeof newlySelectedAppointment.customer_id);
     
-    // Try both string and number comparison
-    const appointment = appointments.find(apt => {
-      console.log(`Comparing apt.id (${apt.id}, type: ${typeof apt.id}) with appointmentId (${appointmentId}, type: ${typeof appointmentId})`);
-      return apt.id == appointmentId || apt.id === parseInt(appointmentId, 10) || String(apt.id) === String(appointmentId);
-    });
+    setSelectedAppointment(newlySelectedAppointment);
+
+    // Find the customer - first try from customers array, then from appointment data
+    let matchingCustomer = customers.find(customer => 
+      String(customer.id) === String(newlySelectedAppointment.customer_id)
+    );
     
-    console.log('Found appointment:', appointment);
-    
-    if (!appointment) {
-      console.error('APPOINTMENT NOT FOUND! Available appointment IDs:', appointments.map(a => ({ id: a.id, type: typeof a.id })));
-      return;
-    }
-    
-    setSelectedAppointment(appointment);
-    
-    if (appointment) {
-      // Find the customer details
-      console.log('Looking for customer with ID:', appointment.customer_id, 'type:', typeof appointment.customer_id);
-      console.log('Available customers:', customers.map(c => ({ id: c.id, type: typeof c.id, name: c.name })));
+    // If not found in customers array (timing issue), use embedded customer data
+    if (!matchingCustomer && newlySelectedAppointment.customers) {
+      matchingCustomer = newlySelectedAppointment.customers;
+      console.log('Using embedded customer data from appointment');
       
-      const customer = customers.find(c => {
-        console.log(`Comparing customer.id (${c.id}, type: ${typeof c.id}) with appointment.customer_id (${appointment.customer_id}, type: ${typeof appointment.customer_id})`);
-        return c.id == appointment.customer_id || c.id === parseInt(appointment.customer_id, 10) || String(c.id) === String(appointment.customer_id);
+      // Add the customer to the customers array if it's not already there
+      setCustomers(prevCustomers => {
+        const customerExists = prevCustomers.some(c => String(c.id) === String(matchingCustomer.id));
+        if (!customerExists) {
+          console.log('Adding embedded customer to customers array');
+          return [...prevCustomers, matchingCustomer];
+        }
+        return prevCustomers;
       });
-      
-      console.log('Found customer for appointment:', customer);
-      
-      if (!customer) {
-        console.error('CUSTOMER NOT FOUND for appointment.customer_id:', appointment.customer_id);
-      }
-      
-      // Update related fields with appointment and customer data
-      const updates = {
-        appointment_id: appointmentId,
-        customer_id: String(appointment.customer_id),
-        service_date: appointment.scheduled_at ? new Date(appointment.scheduled_at).toISOString().split('T')[0] : '',
-      };
-      
-      // Add location from appointment if available, otherwise use customer address
-      if (appointment.location) {
-        updates.location = appointment.location;
-      } else if (customer && customer.address) {
-        updates.location = customer.address;
-      }
-      
-      // Add appointment service type if available
-      if (appointment.service_type) {
-        updates.service_type = appointment.service_type;
-      }
-      
-      // Add appointment notes to quote notes if available
-      if (appointment.notes) {
-        updates.notes = formData.notes ? 
-          `${formData.notes}\n\nTermin-Notizen: ${appointment.notes}` : 
-          `Termin-Notizen: ${appointment.notes}`;
-      }
-      
-      console.log('Updating form with appointment and customer data:', updates);
-      
-      // Update form state
-      setFormData(prev => ({ ...prev, ...updates }));
-      
-      // Also update the selected customer state
-      setSelectedCustomer(customer);
-      
-      // Filter appointments by the selected customer to maintain consistency
-      const customerAppointments = appointments.filter(apt => 
-        String(apt.customer_id) === String(appointment.customer_id)
-      );
-      setFilteredAppointments(customerAppointments);
-    } else {
-      // If appointment is deselected, show all appointments again
-      setFilteredAppointments(appointments);
-      setFormData(prev => ({
-        ...prev,
-        appointment_id: appointmentId,
-      }));
     }
+    
+    console.log('Matching customer found:', matchingCustomer);
+
+    // Auto-populate quote data from appointment
+    // Calculate default due date (30 days from now for quotes)
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 30);
+    const formattedDueDate = dueDate.toISOString().split('T')[0];
+
+    const customerIdToSet = String(newlySelectedAppointment.customer_id);
+    console.log('Setting customer_id to:', customerIdToSet);
+
+    setFormData(prev => ({
+      ...prev,
+      // appointment_id is already set
+      customer_id: customerIdToSet,
+      service_date: newlySelectedAppointment.scheduled_at ? new Date(newlySelectedAppointment.scheduled_at).toISOString().split('T')[0] : '',
+      location: newlySelectedAppointment.location || prev.location || '', // Keep existing if appointment has none
+      notes: newlySelectedAppointment.notes || prev.notes || '', // Keep existing if appointment has none
+      due_date: prev.due_date || formattedDueDate, // Keep existing due date or set default
+    }));
+
+    // Add a small delay to log the updated form data
+    setTimeout(() => {
+      console.log('Form data after appointment selection update:', formData);
+    }, 100);
   };
+
 
   const handleAISuggestions = (suggestions) => {
     console.log('Raw AI suggestions received:', suggestions);
@@ -623,21 +586,7 @@ export default function NewQuotePage() {
   };
 
 
-  const handleCustomerSelection = (customerId) => {
-    const customer = customers.find(c => c.id === parseInt(customerId, 10));
-    setSelectedCustomer(customer);
-    setFormData(prev => ({ ...prev, customer_id: customerId }));
-    
-    // Filter appointments for selected customer
-    if (customer) {
-      const customerAppointments = appointments.filter(apt => 
-        String(apt.customer_id) === String(customer.id)
-      );
-      setFilteredAppointments(customerAppointments);
-    } else {
-      setFilteredAppointments(appointments);
-    }
-  };
+  // Remove the old customer selection logic since we're using the same logic as invoices
 
   const handleSmartMaterialSelection = (material) => {
     // Add smart material suggestion to materials with correct format
@@ -881,35 +830,39 @@ export default function NewQuotePage() {
           {!success && (
             <div className="bg-white/5 rounded-xl p-6 border border-white/10">
               <form onSubmit={handleSubmit}>
-                {/* Appointment Selection */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium mb-1">
-                    Termin auswählen (Optional)
-                  </label>
-                  <div className="relative">
+                {/* Form Loading Indicator */}
+                 {loading && <p className="text-center text-gray-400 mb-4">Lade Daten...</p>}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+
+                  {/* Appointment Selection */}
+                  <div className="col-span-1 md:col-span-2">
+                    <label htmlFor="appointment_id" className="block text-sm font-medium mb-1 text-gray-300">
+                      Erstelle aus Termin (Optional)
+                    </label>
                     <select
+                      id="appointment_id"
                       name="appointment_id"
-                      value={formData.appointment_id || ''}
-                      onChange={(e) => {
-                        console.log('SELECT onChange triggered with value:', e.target.value);
-                        handleAppointmentChange(e);
-                      }}
-                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
-                      disabled={loadingAppointments || success}
+                      value={formData.appointment_id}
+                      onChange={handleAppointmentChange}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
+                      disabled={submitting || loadingAppointments || loading} // Disable while loading/submitting
                     >
-                      <option value="">-- Termin auswählen --</option>
-                      {formData.customer_id && filteredAppointments.length === 0 ? (
-                        <option value="" disabled>
-                          Keine Termine für ausgewählten Kunden
-                        </option>
+                      <option value="">-- Wählen Sie einen Termin --</option>
+                      {loadingAppointments ? (
+                        <option disabled>Loading appointments...</option>
+                      ) : appointments.length === 0 ? (
+                        <option disabled>Keine geeigneten Termine gefunden</option>
                       ) : (
-                        filteredAppointments.map(appointment => {
+                        appointments.map((appointment) => {
                           // Get customer name with fallback logic
                           let customerName = 'Kein Kundenname';
                           if (appointment.customers) {
                             customerName = appointment.customers.name || 
                                          [appointment.customers.first_name, appointment.customers.last_name].filter(Boolean).join(' ').trim() ||
                                          'Kein Kundenname';
+                          } else if (appointment.customer_name) {
+                            customerName = appointment.customer_name;
                           } else {
                             // Fallback: find customer in customers array
                             const customer = customers.find(c => c.id === appointment.customer_id);
@@ -919,110 +872,75 @@ export default function NewQuotePage() {
                                            'Kein Kundenname';
                             }
                           }
+
+                          const appointmentDate = new Date(appointment.scheduled_at);
+                          const dateStr = appointmentDate.toLocaleDateString('de-DE');
+                          const timeStr = appointmentDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                          const serviceType = appointment.service_type || 'Allgemeine Dienstleistung';
+                          const location = appointment.location ? ` - ${appointment.location}` : '';
+
                           return (
                             <option key={appointment.id} value={appointment.id}>
-                              {formatAppointmentDate(appointment.scheduled_at)} - {customerName}
+                              {dateStr} {timeStr} | {customerName} | {serviceType}{location}
                             </option>
                           );
                         })
                       )}
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
-                  {loadingAppointments && (
-                    <p className="text-sm text-gray-400 mt-1 flex items-center">
-                      <span className="mr-2 h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
-                      Termine werden geladen...
-                    </p>
-                  )}
-                  {!loadingAppointments && (
                     <p className="text-xs text-gray-400 mt-1">
-                      💡 Tipp: Wählen Sie einen Termin aus, um automatisch den Kunden zu setzen, oder wählen Sie zuerst einen Kunden, um nur dessen Termine anzuzeigen.
+                      Die Auswahl eines Termins füllt automatisch Kunden- und Service-Daten aus.
                     </p>
-                  )}
-                </div>
-
-                {/* Selected Appointment Card */}
-                {selectedAppointment && (
-                  <div className="mb-6 p-4 bg-gray-900/30 border border-gray-500/30 rounded-xl">
-                    <h3 className="font-medium mb-2 text-gray-300">✓ Termin ausgewählt - Details übernommen</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-400">Datum:</span> {new Date(selectedAppointment.scheduled_at).toLocaleDateString('de-DE')}
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Kunde:</span> {selectedCustomer?.name || 'Nicht gefunden'}
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Zeit:</span> {new Date(selectedAppointment.scheduled_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Service:</span> {selectedAppointment.service_type || 'Nicht angegeben'}
-                      </div>
-                      {selectedAppointment.location && (
-                        <div className="col-span-1 lg:col-span-2">
-                          <span className="text-gray-400">Adresse:</span> {selectedAppointment.location}
-                        </div>
-                      )}
-                      {selectedCustomer?.address && !selectedAppointment.location && (
-                        <div className="col-span-1 lg:col-span-2">
-                          <span className="text-gray-400">Kundenadresse:</span> {selectedCustomer.address}
-                        </div>
-                      )}
-                      {selectedAppointment.notes && (
-                        <div className="col-span-1 lg:col-span-2">
-                          <span className="text-gray-400">Termin-Notizen:</span> {selectedAppointment.notes}
-                        </div>
-                      )}
-                    </div>
                   </div>
-                )}
+
+                   {/* Selected Appointment Details Display */}
+                  {selectedAppointment && (
+                    <div className="col-span-1 md:col-span-2 bg-gray-800/50 border border-gray-700 rounded-xl p-4 my-4">
+                      <h3 className="text-md font-semibold mb-2 text-[#ffcb00]">
+                        Ausgewählte Termin-Details:
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-300">
+                        <div><span className="font-medium text-gray-400">Kunde:</span> {selectedAppointment.customer_name}</div>
+                        <div><span className="font-medium text-gray-400">Datum:</span> {new Date(selectedAppointment.scheduled_at).toLocaleDateString()}</div>
+                        <div><span className="font-medium text-gray-400">Uhrzeit:</span> {new Date(selectedAppointment.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div><span className="font-medium text-gray-400">Service:</span> {selectedAppointment.service_type || 'General Service'}</div>
+                        {selectedAppointment.location && (
+                          <div className="col-span-1 sm:col-span-2"><span className="font-medium text-gray-400">Ort:</span> {selectedAppointment.location}</div>
+                        )}
+                        {selectedAppointment.notes && (
+                          <div className="col-span-1 sm:col-span-2"><span className="font-medium text-gray-400">Notizen:</span> {selectedAppointment.notes}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
 
-                {/* Customer Selection */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium mb-1">
-                    Kunde *
-                  </label>
-                  <div className="relative">
+                  {/* Customer Selection */}
+                  <div className="col-span-1 md:col-span-2">
+                    <label htmlFor="customer_id" className="block text-sm font-medium mb-1 text-gray-300">
+                      Kunde *
+                    </label>
                     <select
+                      id="customer_id"
                       name="customer_id"
                       value={formData.customer_id}
-                      onChange={(e) => {
-                        handleChange(e);
-                        handleCustomerSelection(e.target.value);
-                      }}
-                      className="w-full bg-[#2a2a2a] border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#ffcb00] appearance-none"
+                      onChange={handleChange}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#ffcb00]/50 focus:border-[#ffcb00]/50 text-white disabled:opacity-50"
                       required
-                      disabled={success}
+                      disabled={submitting || loading || customers.length === 0} // Disable if loading customers or submitting
                     >
-                      <option value="">-- Kunde auswählen --</option>
+                      <option value="">-- Wählen Sie einen Kunden --</option>
                       {customers.map(customer => (
                         <option key={customer.id} value={customer.id}>
-                          {customer.name || [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || `Kunde ${customer.id}`}
+                          {customer.name} {customer.email ? `(${customer.email})` : ''}
                         </option>
                       ))}
                     </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                      <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </div>
+                     {customers.length === 0 && !loading && (
+                         <p className="text-xs text-yellow-400 mt-1">Keine Kunden gefunden. <Link href="/customers/new" className="underline hover:text-yellow-300">Fügen Sie einen Kunden hinzu?</Link></p>
+                     )}
                   </div>
-                  {loading && (
-                    <p className="text-sm text-gray-400 mt-1 flex items-center">
-                      <span className="mr-2 h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
-                      Kunden werden geladen...
-                    </p>
-                  )}
-                </div>
 
-                {/* Form Fields */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-6">
+                  {/* Form Fields - keeping existing structure but within the main grid */}
                   {/* Service Type */}
                   <div>
                     <label className="block text-sm font-medium mb-1">
@@ -1320,7 +1238,7 @@ export default function NewQuotePage() {
                     </div>
                   )}
                 </div>
-                </div>
+                </div> {/* Closing grid div */}
                 
                 {/* Submit Button */}
                 <div className="mt-8 pt-6 border-t border-white/10 flex justify-end">

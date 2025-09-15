@@ -172,7 +172,10 @@ export default function Home() {
     try {
       
       const craftsmanRes = await fetcher('/api/craftsmen');
-      const craftsmanData = craftsmanRes.ok ? await craftsmanRes.json() : null;
+      const craftsmanResponse = craftsmanRes.ok ? await craftsmanRes.json() : null;
+      
+      // Handle standardized API response format
+      const craftsmanData = craftsmanResponse?.data !== undefined ? craftsmanResponse.data : craftsmanResponse;
       
       // Debug the craftsman data structure
       console.log('Craftsman data received:', craftsmanData);

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuthedFetch } from '../../../lib/utils/useAuthedFetch';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
@@ -39,6 +40,7 @@ export default function CustomersDocumentsPage() {
   });
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   
+  const router = useRouter();
   const fetcher = useAuthedFetch();
   const { user, loading: authLoading } = useRequireAuth();
 
@@ -344,10 +346,10 @@ export default function CustomersDocumentsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredCustomers.map((customer) => (
-                  <Link
+                  <div
                     key={customer.id}
-                    href={`/documents/customers/${customer.id}`}
                     className="bg-white/5 rounded-lg p-5 border border-white/10 hover:bg-white/10 transition-all group cursor-pointer"
+                    onClick={() => router.push(`/documents/customers/${customer.id}`)}
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center">
@@ -384,14 +386,75 @@ export default function CustomersDocumentsPage() {
                     </div>
                     
                     <div className="pt-3 border-t border-white/10">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-3">
                         <span className="text-white/60 text-sm">Dokumente anzeigen</span>
-                        <div className="bg-[#ffcb00]/20 text-[#ffcb00] px-2 py-1 rounded text-xs font-medium">
-                          {customer.document_count || 0} Dokumente
+                        <div className="flex gap-1 flex-wrap">
+                          <div className="bg-[#ffcb00]/20 text-[#ffcb00] px-2 py-1 rounded text-xs font-medium">
+                            {customer.document_count || 0} Gesamt
+                          </div>
+                          <div className="bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs font-medium">
+                            {customer.invoices_count || 0} Rechnungen
+                          </div>
+                          <div className="bg-purple-500/20 text-purple-400 px-2 py-1 rounded text-xs font-medium">
+                            {customer.quotes_count || 0} Angebote
+                          </div>
+                          <div className="bg-blue-500/20 text-blue-400 px-2 py-1 rounded text-xs font-medium">
+                            {customer.notes_count || 0} Notizen
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Link
+                            href={`/invoices?customer_id=${customer.id}`}
+                            className="flex-1 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Rechnungen
+                          </Link>
+                          <Link
+                            href={`/invoices/new?customer_id=${customer.id}`}
+                            className="flex-1 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            + Rechnung
+                          </Link>
+                        </div>
+                        <div className="flex gap-2">
+                          <Link
+                            href={`/quotes?customer_id=${customer.id}`}
+                            className="flex-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Angebote
+                          </Link>
+                          <Link
+                            href={`/quotes/new?customer_id=${customer.id}`}
+                            className="flex-1 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            + Angebot
+                          </Link>
+                        </div>
+                        <div className="flex gap-2">
+                          <Link
+                            href={`/notes?customer_id=${customer.id}`}
+                            className="flex-1 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Notizen
+                          </Link>
+                          <Link
+                            href={`/notes/new?customer_id=${customer.id}`}
+                            className="flex-1 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 px-3 py-2 rounded text-xs font-medium text-center transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            + Notiz
+                          </Link>
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}

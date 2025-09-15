@@ -114,7 +114,7 @@ export async function PUT(req) {
       total_materials_price: totalMaterialsPrice.toFixed(2)
     };
     
-    // Update the invoice with materials in the JSONB field
+    // Update Invoice with materials in the JSONB field
     const { data: invoiceData, error: invoiceError } = await supabase
       .from('invoices')
       .update(updateBody)
