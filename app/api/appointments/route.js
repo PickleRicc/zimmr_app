@@ -96,7 +96,10 @@ export async function GET(req) {
           // Attach customer data to appointments
           data.forEach(appointment => {
             if (appointment.customer_id) {
-              appointment.customers = customerMap[appointment.customer_id] || null;
+              const customer = customerMap[appointment.customer_id];
+              appointment.customers = customer || null;
+              // Also set customer_name for backward compatibility
+              appointment.customer_name = customer?.name || null;
             }
           });
         }

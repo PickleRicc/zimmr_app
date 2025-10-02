@@ -65,23 +65,46 @@ export async function GET(req) {
 
     // ---------- Aggregate per month ----------
     const monthlyPaid = Array(12).fill(0);
-    const monthlyOpen = Array(12).fill(0);
+    const monthlyPending = Array(12).fill(0);
 
+    console.log(`${ROUTE_NAME} - Processing ${invoices?.length || 0} invoices`);
     invoices?.forEach(inv => {
       const monthIdx = new Date(inv.created_at).getMonth(); // 0-based
       const amt = Number(inv.total_amount) || 0;
-      if (inv.status === 'paid') monthlyPaid[monthIdx] += amt;
-      else monthlyOpen[monthIdx] += amt;
+      if (inv.status === 'paid') {
+        monthlyPaid[monthIdx] += amt;
+      } else {
+        monthlyPending[monthIdx] += amt;
+      }
+      console.log(`${ROUTE_NAME} - Invoice: month=${monthIdx}, status=${inv.status}, amount=${amt}`);
     });
 
-    // Convert to cumulative
+    console.log(`${ROUTE_NAME} - Monthly paid before cumulative:`, monthlyPaid);
+    console.log(`${ROUTE_NAME} - Monthly pending before cumulative:`, monthlyPending);
+
+    // Convert paid to cumulative (running total of paid invoices)
     for (let i = 1; i < 12; i++) {
       monthlyPaid[i] += monthlyPaid[i - 1];
-      monthlyOpen[i] += monthlyOpen[i - 1];
+    }
+    
+    // For pending, show cumulative total of ALL pending invoices up to that month
+    // This represents the total outstanding amount at each point in time
+    for (let i = 1; i < 12; i++) {
+      monthlyPending[i] += monthlyPending[i - 1];
+    }
+    
+    // Calculate the combined revenue line (paid + pending at each month)
+    const monthlyTotal = Array(12).fill(0);
+    for (let i = 0; i < 12; i++) {
+      monthlyTotal[i] = monthlyPaid[i] + monthlyPending[i];
     }
 
+    console.log(`${ROUTE_NAME} - Monthly paid (cumulative):`, monthlyPaid);
+    console.log(`${ROUTE_NAME} - Monthly pending (cumulative):`, monthlyPending);
+    console.log(`${ROUTE_NAME} - Monthly total (paid + pending):`, monthlyTotal);
+
     const totalRevenue = monthlyPaid[11] || 0;
-    const totalOpen = monthlyOpen[11] || 0;
+    const totalOpen = monthlyPending[11] || 0;
 
     const payload = {
       goal: goalData || null,
@@ -89,7 +112,8 @@ export async function GET(req) {
       totalOpen,
       monthly: {
         paid: monthlyPaid,
-        open: monthlyOpen
+        open: monthlyPending,
+        total: monthlyTotal
       }
     };
 

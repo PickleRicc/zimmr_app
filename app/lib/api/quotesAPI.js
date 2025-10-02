@@ -14,8 +14,12 @@ const defaultHeaders = () => {
 export const quotesAPI = {
   // Alias used by legacy UI – maps to list
   getAll: (...args) => quotesAPI.list(...args),
-  async list(status) {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  async list(status, includeCustomer = false) {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (includeCustomer) params.append('include_customer', 'true');
+    
+    const qs = params.toString() ? `?${params.toString()}` : '';
     const res = await fetch(`/api/quotes${qs}`, {
       headers: { ...defaultHeaders() }
     });
@@ -23,18 +27,91 @@ export const quotesAPI = {
     const response = await res.json();
     
     // Handle the new standardized API response format
-    return response.data || response;
+    const quotesData = response.data || response;
+    
+    // If customer data is included, fetch customer details for each quote
+    if (includeCustomer && Array.isArray(quotesData)) {
+      const quotesWithCustomers = await Promise.all(
+        quotesData.map(async (quote) => {
+          if (quote.customer_id) {
+            try {
+              // Fetch customer data using the customer_id
+              const customerRes = await fetch(`/api/customers?id=${quote.customer_id}`, {
+                headers: { ...defaultHeaders() }
+              });
+              
+              if (customerRes.ok) {
+                const customerData = await customerRes.json();
+                const customer = customerData.data || customerData;
+                
+                return {
+                  ...quote,
+                  customer: customer,
+                  customer_name: customer ?
+                    ([customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || customer.name || null)
+                    : null
+                };
+              }
+            } catch (error) {
+              console.error(`Error fetching customer ${quote.customer_id}:`, error);
+            }
+          }
+          
+          // Return quote without customer data if fetch failed or no customer_id
+          return {
+            ...quote,
+            customer: null,
+            customer_name: null
+          };
+        })
+      );
+      
+      return quotesWithCustomers;
+    }
+    
+    return quotesData;
   },
 
-  async get(id) {
-    const res = await fetch(`/api/quotes/${id}`, {
+  async get(id, includeCustomer = false) {
+    const params = new URLSearchParams();
+    if (includeCustomer) params.append('include_customer', 'true');
+    
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const res = await fetch(`/api/quotes/${id}${qs}`, {
       headers: { ...defaultHeaders() }
     });
     if (!res.ok) throw new Error(await res.text());
     const response = await res.json();
     
     // Handle the new standardized API response format
-    return response.data || response;
+    const quoteData = response.data || response;
+    
+    // If customer data is included, fetch customer details
+    if (includeCustomer && quoteData.customer_id) {
+      try {
+        // Fetch customer data using the customer_id
+        const customerRes = await fetch(`/api/customers?id=${quoteData.customer_id}`, {
+          headers: { ...defaultHeaders() }
+        });
+        
+        if (customerRes.ok) {
+          const customerData = await customerRes.json();
+          const customer = customerData.data || customerData;
+          
+          return {
+            ...quoteData,
+            customer: customer,
+            customer_name: customer ?
+              ([customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || customer.name || null)
+              : null
+          };
+        }
+      } catch (error) {
+        console.error(`Error fetching customer ${quoteData.customer_id}:`, error);
+      }
+    }
+    
+    return quoteData;
   },
 
   async create(data) {

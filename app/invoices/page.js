@@ -24,17 +24,40 @@ export default function InvoicesPage() {
   const [statusUpdateId, setStatusUpdateId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [success, setSuccess] = useState('');
+  const [craftsmanData, setCraftsmanData] = useState(null);
 
   
   const fetcher = useAuthedFetch();
   const { user, loading: authLoading } = useRequireAuth();
 
-  // fetch invoices when authentication state is ready
+  // fetch invoices and craftsman data when authentication state is ready
   useEffect(() => {
     if (!authLoading && user) {
-      fetchInvoices();
+      console.log('Auth ready, fetching data. User:', user.email);
+      // Small delay to ensure auth token is fully loaded
+      const timer = setTimeout(() => {
+        fetchInvoices();
+        fetchCraftsmanData();
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (!authLoading && !user) {
+      console.error('No user found after auth loading completed');
+      setError('Nicht angemeldet. Bitte melden Sie sich an.');
     }
   }, [authLoading, user]);
+
+  const fetchCraftsmanData = async () => {
+    try {
+      const response = await fetcher('/api/craftsmen');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch craftsman data: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setCraftsmanData(data.data || data);
+    } catch (err) {
+      console.error('Error fetching craftsman data:', err);
+    }
+  };
 
   // recompute filtered list when invoices or filter inputs change
   useEffect(() => {
@@ -62,7 +85,18 @@ export default function InvoicesPage() {
       
       // Fetch invoices with customer data included
       const res = await fetcher('/api/invoices?include_customer=true');
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Failed to fetch invoices:', res.status, errorText);
+        
+        // Handle 401 specifically
+        if (res.status === 401) {
+          setError('Sitzung abgelaufen. Bitte melden Sie sich erneut an.');
+          return;
+        }
+        
+        throw new Error(errorText);
+      }
       const responseData = await res.json();
       console.log('Fetched invoices response:', responseData);
       
@@ -99,22 +133,31 @@ export default function InvoicesPage() {
       setPdfLoading(true);
       setProcessingInvoiceId(invoice.id);
       
-      // Get craftsman data from localStorage if available
-      const craftsmanData = {
-        name: localStorage.getItem('userName') || 'ZIMMR Craftsman',
-        email: localStorage.getItem('userEmail') || '',
-        phone: localStorage.getItem('userPhone') || '',
-        address: localStorage.getItem('userAddress') || '',
-        // Add tax and banking information for German invoices
-        tax_id: localStorage.getItem('userTaxId') || '',
-        iban: localStorage.getItem('userIban') || '',
-        bic: localStorage.getItem('userBic') || '',
-        bank_name: localStorage.getItem('userBank') || 'Bank',
-        owner_name: localStorage.getItem('userName') || ''
-      };
+      // Use fetched craftsman data (includes pdf_settings)
+      if (!craftsmanData) {
+        console.error('Craftsman data not loaded yet');
+        alert('Bitte warten Sie, bis die Profildaten geladen sind.');
+        return;
+      }
       
-      // Make sure we pass the full invoice object properly
-      await invoicesAPI.generatePdf(invoice, craftsmanData);
+      // Fetch full invoice details (list only has summary data)
+      console.log('Fetching full invoice details for PDF generation...');
+      const response = await fetcher(`/api/invoices/${invoice.id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch full invoice details');
+      }
+      const fullInvoiceData = await response.json();
+      const fullInvoice = fullInvoiceData.data || fullInvoiceData;
+      
+      console.log('Full invoice data:', fullInvoice);
+      console.log('Craftsman data with pdf_settings:', craftsmanData);
+      
+      // Import PDF generator and call directly
+      const pdfModule = await import('../../lib/utils/pdfGenerator');
+      const pdfGenerator = pdfModule.default || pdfModule;
+      
+      // Generate PDF with full data
+      await pdfGenerator.generateInvoicePdf(fullInvoice, craftsmanData);
       console.log('German-style invoice PDF generated successfully');
       
     } catch (err) {

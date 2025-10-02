@@ -62,9 +62,19 @@ export default function Home() {
       const response = await fetcher('/api/customers');
       
       if (response.ok) {
-        const data = await response.json();
-        const customers = data.data || data;
-        const count = Array.isArray(customers) ? customers.length : 0;
+        const responseData = await response.json();
+        const data = responseData.data || responseData;
+        
+        // Handle paginated response structure
+        let count = 0;
+        if (data.pagination && typeof data.pagination.total === 'number') {
+          count = data.pagination.total;
+        } else if (data.customers && Array.isArray(data.customers)) {
+          count = data.customers.length;
+        } else if (Array.isArray(data)) {
+          count = data.length;
+        }
+        
         console.log('Dashboard: Customer count received:', count);
         setCustomerCount(count);
       } else {
@@ -372,8 +382,8 @@ export default function Home() {
                   </div>
                 ) : financeStats ? (
                   <div>
-                    {/* Chart container with height matching appointment card */}
-                    <div className="h-72 mb-8" style={{ position: 'relative' }}>
+                    {/* Chart container with explicit height */}
+                    <div style={{ width: '100%', height: '300px', marginBottom: '2rem' }}>
                       <RevenueChart 
                         monthlyPaid={financeStats.monthly?.paid || []} 
                         monthlyOpen={financeStats.monthly?.open || []} 
@@ -384,12 +394,12 @@ export default function Home() {
                     {/* Manual legend to ensure visibility */}
                     <div className="flex items-center justify-center gap-6 mb-6">
                       <div className="flex items-center">
-                        <span className="inline-block w-3 h-3 mr-2 bg-green-500 rounded-full"></span>
-                        <span className="text-white text-sm">Bezahlt</span>
+                        <span className="inline-block w-3 h-3 mr-2 bg-[#ffcb00] rounded-full"></span>
+                        <span className="text-white text-sm">Ausstehend</span>
                       </div>
                       <div className="flex items-center">
-                        <span className="inline-block w-3 h-3 mr-2 bg-yellow-500 rounded-full"></span>
-                        <span className="text-white text-sm">Ausstehend</span>
+                        <span className="inline-block w-3 h-3 mr-2 bg-green-500 rounded-full"></span>
+                        <span className="text-white text-sm">Bezahlt</span>
                       </div>
                     </div>
                     <div className="flex flex-wrap justify-between mt-8 gap-4">
@@ -399,7 +409,7 @@ export default function Home() {
                       </div>
                       <div className="bg-white/5 rounded-lg p-4">
                         <span className="text-white/70 text-sm">Ausstehend</span>
-                        <p className="text-lg font-medium text-yellow-500">€{Number(financeStats.totalOpen || 0).toLocaleString('de-DE')}</p>
+                        <p className="text-lg font-medium text-[#ffcb00]">€{Number(financeStats.totalOpen || 0).toLocaleString('de-DE')}</p>
                       </div>
                       <div className="bg-white/5 rounded-lg p-4">
                         <span className="text-white/70 text-sm">Jahresziel</span>

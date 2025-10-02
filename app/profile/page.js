@@ -19,7 +19,6 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [activeTab, setActiveTab] = useState("details");
 
   const [form, setForm] = useState({
     name: "",
@@ -35,6 +34,22 @@ export default function ProfilePage() {
     friday: [],
     saturday: [],
     sunday: [],
+  });
+
+  const [pdfSettings, setPdfSettings] = useState({
+    // Company Details
+    company_name: "",
+    company_address: "",
+    company_phone: "",
+    company_email: "",
+    // Tax Info
+    tax_id: "",
+    vat_id: "",
+    ceo_name: "",
+    // Bank Details
+    bank_name: "",
+    iban: "",
+    bic: "",
   });
 
   /* ------------- data fetch ------------- */
@@ -74,6 +89,9 @@ export default function ProfilePage() {
 
   const populate = (data) => {
     if (!data) return;
+    console.log('Populating profile data:', data);
+    console.log('PDF Settings from DB:', data.pdf_settings);
+    
     setForm({
       name: data.name || "",
       phone: data.phone || "",
@@ -90,6 +108,21 @@ export default function ProfilePage() {
         sunday: data.availability_hours.sunday || [],
       });
     }
+    // Load PDF settings (handle both null and empty object)
+    const pdfData = data.pdf_settings || {};
+    console.log('Setting PDF state to:', pdfData);
+    setPdfSettings({
+      company_name: pdfData.company_name || "",
+      company_address: pdfData.company_address || "",
+      company_phone: pdfData.company_phone || "",
+      company_email: pdfData.company_email || "",
+      tax_id: pdfData.tax_id || "",
+      vat_id: pdfData.vat_id || "",
+      ceo_name: pdfData.ceo_name || "",
+      bank_name: pdfData.bank_name || "",
+      iban: pdfData.iban || "",
+      bic: pdfData.bic || "",
+    });
   };
 
   /* ------------- handlers ------------- */
@@ -98,12 +131,21 @@ export default function ProfilePage() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handlePdfSettingsChange = (e) => {
+    const { name, value } = e.target;
+    setPdfSettings((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
     setSuccess("");
     try {
-      const payload = { ...form, availability_hours: availabilityHours };
+      const payload = { 
+        ...form, 
+        availability_hours: availabilityHours,
+        pdf_settings: pdfSettings 
+      };
       const res = await authedFetch("/api/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -138,17 +180,6 @@ export default function ProfilePage() {
   };
 
   /* ------------- UI parts ------------- */
-  const TabButton = ({ id, children }) => (
-    <button
-      onClick={() => setActiveTab(id)}
-      className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${
-        activeTab === id ? `bg-[${ACCENT}] text-black` : "text-white hover:bg-white/10"
-      }`}
-    >
-      {children}
-    </button>
-  );
-
   if (authLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#121212] to-[#1a1a1a]">
@@ -161,80 +192,126 @@ export default function ProfilePage() {
     <>
       <Header />
       <div className="min-h-screen bg-gradient-to-b from-[#121212] to-[#1a1a1a] px-4 py-8">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Profil-Einstellungen</h1>
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-3xl font-bold text-white mb-2">Profil-Einstellungen</h1>
+          <p className="text-white/60 mb-8">Verwalten Sie Ihre persönlichen Daten und PDF-Einstellungen</p>
 
-        {/* Tabs */}
-        <div className="flex bg-white/5 rounded-lg mb-8 overflow-hidden">
-          <TabButton id="details">Details</TabButton>
-          <TabButton id="availability">Verfügbarkeit</TabButton>
-          <TabButton id="security">Sicherheit</TabButton>
+          {error && (
+            <div className="mb-6 p-3 bg-red-500/20 text-red-400 rounded">{error}</div>
+          )}
+          {success && (
+            <div className="mb-6 p-3 bg-green-500/20 text-green-400 rounded">{success}</div>
+          )}
+
+          <div className="space-y-6">
+            {/* Personal Details Section */}
+            <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <h2 className="text-2xl font-semibold text-white mb-4">Persönliche Daten</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Field label="Anzeigename" name="name" value={form.name} onChange={handleChange} />
+                <Field label="Telefon" name="phone" value={form.phone} onChange={handleChange} />
+                <Field
+                  label="Fachgebiet"
+                  name="specialty"
+                  value={form.specialty}
+                  onChange={handleChange}
+                  className="md:col-span-2"
+                />
+                <Field label="E-Mail" value={user?.email || ""} disabled />
+              </div>
+            </div>
+
+            {/* PDF Settings - Company Details */}
+            <div className="bg-white/5 p-6 rounded-lg border border-white/10">
+              <h2 className="text-2xl font-semibold text-white mb-2">PDF-Einstellungen</h2>
+              <p className="text-white/60 text-sm mb-6">
+                Diese Informationen erscheinen auf Ihren Rechnungen und Angeboten
+              </p>
+              
+              <h3 className="text-lg font-semibold text-white mb-4">Firmendetails</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <Field 
+                  label="Firmenname" 
+                  name="company_name" 
+                  value={pdfSettings.company_name} 
+                  onChange={handlePdfSettingsChange} 
+                  className="md:col-span-2"
+                />
+                <Field 
+                  label="Adresse" 
+                  name="company_address" 
+                  value={pdfSettings.company_address} 
+                  onChange={handlePdfSettingsChange} 
+                  className="md:col-span-2"
+                />
+                <Field 
+                  label="Telefon" 
+                  name="company_phone" 
+                  value={pdfSettings.company_phone} 
+                  onChange={handlePdfSettingsChange} 
+                />
+                <Field 
+                  label="E-Mail" 
+                  name="company_email" 
+                  value={pdfSettings.company_email} 
+                  onChange={handlePdfSettingsChange} 
+                />
+              </div>
+
+              <h3 className="text-lg font-semibold text-white mb-4">Steuerinformationen</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <Field 
+                  label="Steuernummer" 
+                  name="tax_id" 
+                  value={pdfSettings.tax_id} 
+                  onChange={handlePdfSettingsChange} 
+                />
+                <Field 
+                  label="USt-IdNr. (optional)" 
+                  name="vat_id" 
+                  value={pdfSettings.vat_id} 
+                  onChange={handlePdfSettingsChange} 
+                />
+                <Field 
+                  label="Geschäftsführer / Inhaber" 
+                  name="ceo_name" 
+                  value={pdfSettings.ceo_name} 
+                  onChange={handlePdfSettingsChange} 
+                  className="md:col-span-2"
+                />
+              </div>
+
+              <h3 className="text-lg font-semibold text-white mb-4">Bankverbindung</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Field 
+                  label="Bankname" 
+                  name="bank_name" 
+                  value={pdfSettings.bank_name} 
+                  onChange={handlePdfSettingsChange} 
+                  className="md:col-span-2"
+                />
+                <Field 
+                  label="IBAN" 
+                  name="iban" 
+                  value={pdfSettings.iban} 
+                  onChange={handlePdfSettingsChange} 
+                />
+                <Field 
+                  label="BIC" 
+                  name="bic" 
+                  value={pdfSettings.bic} 
+                  onChange={handlePdfSettingsChange} 
+                />
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <div className="flex justify-end">
+              <SaveButton onClick={handleSave} saving={saving} />
+            </div>
+          </div>
         </div>
-
-        {error && (
-          <div className="mb-6 p-3 bg-red-500/20 text-red-400 rounded">{error}</div>
-        )}
-        {success && (
-          <div className="mb-6 p-3 bg-green-500/20 text-green-400 rounded">{success}</div>
-        )}
-
-        {/* --------------- Details Tab --------------- */}
-        {activeTab === "details" && (
-          <div className="space-y-6 bg-white/5 p-6 rounded-lg border border-white/10">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Field label="Anzeigename" name="name" value={form.name} onChange={handleChange} />
-              <Field label="Telefon" name="phone" value={form.phone} onChange={handleChange} />
-              <Field
-                label="Fachgebiet"
-                name="specialty"
-                value={form.specialty}
-                onChange={handleChange}
-                className="md:col-span-2"
-              />
-              <Field label="E-Mail" value={user?.email || ""} disabled />
-            </div>
-            <div className="text-right">
-              <SaveButton onClick={handleSave} saving={saving} />
-            </div>
-          </div>
-        )}
-
-        {/* --------------- Availability Tab --------------- */}
-        {activeTab === "availability" && (
-          <div className="bg-white/5 p-6 rounded-lg border border-white/10">
-            <p className="text-white/70 mb-4">
-              Schneller JSON-Editor für jetzt — später durch Zeitslot-Auswahl ersetzen.
-            </p>
-            <textarea
-              className="w-full h-60 p-3 rounded bg-black/50 text-white text-sm font-mono"
-              value={JSON.stringify(availabilityHours, null, 2)}
-              onChange={(e) => {
-                try {
-                  const obj = JSON.parse(e.target.value);
-                  setAvailabilityHours(obj);
-                } catch (_) {}
-              }}
-            />
-            <div className="text-right mt-4">
-              <SaveButton onClick={handleSave} saving={saving} />
-            </div>
-          </div>
-        )}
-
-        {/* --------------- Security Tab --------------- */}
-        {activeTab === "security" && (
-          <div className="bg-white/5 p-6 rounded-lg border border-white/10 space-y-4 text-white/90">
-            <p>Verwenden Sie den <span className="text-[${ACCENT}]">Passwort zurücksetzen</span> Link auf der Anmeldeseite, um Ihr Passwort zu ändern.</p>
-            <button
-              className="px-4 py-2 rounded bg-transparent border border-white hover:bg-white/10"
-              onClick={() => router.push("/auth/reset-password")}
-            >
-              Passwort zurücksetzen
-            </button>
-          </div>
-        )}
       </div>
-    </div>
     </>
   );
 }

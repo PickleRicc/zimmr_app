@@ -401,12 +401,14 @@ export default function QuoteDetailPage({ params }) {
     try {
       setPdfLoading(true);
       
-      // Get craftsman data if needed for the PDF
+      // Get craftsman data with pdf_settings
       let craftsmanData = {};
       try {
-        const response = await fetcher('/api/craftsman/profile');
+        const response = await fetcher('/api/craftsmen');
         if (response.ok) {
-          craftsmanData = await response.json();
+          const data = await response.json();
+          craftsmanData = data.data || data;
+          console.log('Craftsman data with pdf_settings:', craftsmanData);
         }
       } catch (err) {
         console.warn('Could not fetch craftsman profile for PDF:', err);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 
 import { quotesAPI } from '../lib/api/quotesAPI';
@@ -27,16 +27,40 @@ export default function QuotesPage() {
   const [success, setSuccess] = useState('');
   const [converting, setConverting] = useState(false);
   const [convertingId, setConvertingId] = useState(null);
+  const [craftsmanData, setCraftsmanData] = useState(null);
 
   const router = useRouter();
   const { user, loading: authLoading } = useRequireAuth();
   const fetcher = useAuthedFetch();
 
+  // fetch quotes and craftsman data when authentication state is ready
   useEffect(() => {
     if (!authLoading && user) {
-      fetchQuotes();
+      console.log('Auth ready, fetching data. User:', user.email);
+      // Small delay to ensure auth token is fully loaded
+      const timer = setTimeout(() => {
+        fetchQuotes();
+        fetchCraftsmanData();
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (!authLoading && !user) {
+      console.error('No user found after auth loading completed');
+      setError('Nicht angemeldet. Bitte melden Sie sich an.');
     }
   }, [authLoading, user]);
+
+  const fetchCraftsmanData = async () => {
+    try {
+      const response = await fetcher('/api/craftsmen');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch craftsman data: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setCraftsmanData(data.data || data);
+    } catch (err) {
+      console.error('Error fetching craftsman data:', err);
+    }
+  };
     
     
  
@@ -90,51 +114,163 @@ export default function QuotesPage() {
     }
   };
 
-  const fetchQuotes = async () => {
+  const fetchQuotes = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Use quotesAPI to fetch quotes with customer data included
+      // First fetch quotes with the authenticated fetcher
       const response = await fetcher('/api/quotes?include_customer=true').then(r=>r.json());
-      
-      console.log('Fetched quotes:', response);
+      console.log('Fetched quotes response:', response);
       
       // Handle the new standardized API response format
       const quotesData = response.data || response;
       
-      // Add customer_name field from customer data for display
-      const quotesWithCustomerNames = quotesData.map(quote => ({
-        ...quote,
-        customer_name: quote.customer ?
-        ([quote.customer.first_name, quote.customer.last_name].filter(Boolean).join(' ').trim() || quote.customer.name || null)
-        : null
-      }));
+      // Get unique customer IDs to avoid duplicate API calls
+      const uniqueCustomerIds = [...new Set(
+        quotesData
+          .filter(quote => quote.customer_id)
+          .map(quote => quote.customer_id)
+      )];
       
-      setQuotes(quotesWithCustomerNames);
+      console.log('Unique customer IDs to fetch:', uniqueCustomerIds);
+      
+      // Fetch all customers at once to avoid API loops
+      const customersMap = new Map();
+      
+      if (uniqueCustomerIds.length > 0) {
+        try {
+          // Fetch all customers in parallel but limit to avoid overwhelming the API
+          const customerPromises = uniqueCustomerIds.map(async (customerId) => {
+            try {
+              const customerResponse = await fetcher(`/api/customers?id=${customerId}`);
+              if (customerResponse.ok) {
+                const customerData = await customerResponse.json();
+                const customer = customerData.data || customerData;
+                return { customerId, customer };
+              } else {
+                console.error(`Customer fetch failed for ${customerId} with status:`, customerResponse.status);
+                return { customerId, customer: null };
+              }
+            } catch (error) {
+              console.error(`Error fetching customer ${customerId}:`, error);
+              return { customerId, customer: null };
+            }
+          });
+          
+          const customerResults = await Promise.all(customerPromises);
+          
+          // Build customers map
+          customerResults.forEach(({ customerId, customer }) => {
+            customersMap.set(customerId, customer);
+          });
+          
+          console.log('Fetched customers:', customersMap.size);
+        } catch (error) {
+          console.error('Error fetching customers:', error);
+        }
+      }
+      
+      // Now map quotes with their customer data - ensure stable object references
+      const quotesWithCustomers = quotesData.map(quote => {
+        const baseQuote = {
+          ...quote,
+          // Ensure ID is always present and stable
+          id: quote.id || `temp-${Date.now()}-${Math.random()}`,
+          customer: null,
+          customer_name: null
+        };
+        
+        if (quote.customer_id && customersMap.has(quote.customer_id)) {
+          const customer = customersMap.get(quote.customer_id);
+          baseQuote.customer = customer;
+          baseQuote.customer_name = customer ?
+            ([customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || customer.name || null)
+            : null;
+        }
+        
+        return baseQuote;
+      });
+      
+      // Set quotes state once with complete data to prevent DOM reconciliation issues
+      setQuotes(quotesWithCustomers);
+      console.log('Quotes with customer data set:', quotesWithCustomers.length);
       setError(null);
     } catch (err) {
       console.error('Error fetching quotes:', err);
-      setError('Fehler beim Laden von Angeboten. Bitte versuchen Sie es später erneut.');
+      setError('Fehler beimladen von Angeboten. Bitte versuchen Sie es später erneut.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetcher]);
 
   const handleGeneratePdf = async (quote) => {
     try {
       setPdfLoading(true);
       setProcessingQuoteId(quote.id);
 
-      // Get craftsman data from localStorage if available
-      const craftsmanData = {
-        name: localStorage.getItem('userName') || 'Handwerker',
-        email: localStorage.getItem('userEmail') || '',
-        phone: '',
-        address: ''
-      };
+      // SOLUTION 1: Fetch complete quote data with customer information using authenticated fetcher
+      console.log('Fetching complete quote data with customer info for PDF generation...');
+      
+      // Use the authenticated fetcher directly instead of quotesAPI.get to avoid auth issues
+      const response = await fetcher(`/api/quotes/${quote.id}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch quote: ${response.status}`);
+      }
+      const responseData = await response.json();
+      const quoteData = responseData.data || responseData;
+      
+      // Fetch customer data separately using the authenticated fetcher
+      let completeQuote = { ...quoteData };
+      if (quoteData.customer_id) {
+        try {
+          // Fix: Use query parameter format instead of path parameter
+          const customerResponse = await fetcher(`/api/customers?id=${quoteData.customer_id}`);
+          if (customerResponse.ok) {
+            const customerData = await customerResponse.json();
+            const customer = customerData.data || customerData;
+            
+            console.log('Customer data fetched:', customer);
+            
+            completeQuote = {
+              ...quoteData,
+              customer: customer,
+              customer_name: customer ?
+                ([customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || customer.name || null)
+                : null,
+              customer_address: customer?.address || quoteData.location || null
+            };
+            
+            console.log('Complete quote with customer data:', {
+              customer_name: completeQuote.customer_name,
+              customer_address: completeQuote.customer_address,
+              customer: completeQuote.customer
+            });
+          } else {
+            console.error('Customer fetch failed with status:', customerResponse.status);
+          }
+        } catch (customerError) {
+          console.error('Error fetching customer data:', customerError);
+        }
+      }
+      
+      console.log('Complete quote data fetched:', completeQuote);
 
-      // Use the dedicated API method to generate a PDF
-      await quotesAPI.generatePdf(quote, craftsmanData);
+      // Use fetched craftsman data (includes pdf_settings)
+      if (!craftsmanData) {
+        console.error('Craftsman data not loaded yet');
+        alert('Bitte warten Sie, bis die Profildaten geladen sind.');
+        return;
+      }
+
+      console.log('Craftsman data with pdf_settings:', craftsmanData);
+      
+      // Import PDF generator and call directly
+      const pdfModule = await import('../../lib/utils/pdfGenerator');
+      const pdfGenerator = pdfModule.default || pdfModule;
+      
+      // Generate PDF with full data
+      await pdfGenerator.generateQuotePdf(completeQuote, craftsmanData);
+      console.log('German-style quote PDF generated successfully');
 
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -360,8 +496,8 @@ export default function QuotesPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredQuotes.map(quote => (
-                  <div key={quote.id} className="bg-white/5 rounded-lg overflow-hidden border border-white/10">
+                {filteredQuotes.map((quote, index) => (
+                  <div key={`quote-${quote.id}-${index}`} className="bg-white/5 rounded-lg overflow-hidden border border-white/10">
                     <div className="p-5">
                       <div className="flex justify-between mb-2">
                         <div>

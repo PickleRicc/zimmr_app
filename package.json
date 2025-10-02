@@ -25,6 +25,7 @@
     "react-chartjs-2": "^5.3.0",
     "react-dom": "18.2.0",
     "react-feather": "^2.0.10",
+    "recharts": "^3.2.1",
     "twilio": "^5.3.4",
     "ws": "^8.18.0"
   },
