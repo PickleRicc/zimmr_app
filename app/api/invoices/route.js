@@ -50,12 +50,20 @@ export async function GET(req) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
-    const includeCustomer = searchParams.get('include_customer') === 'true';
     console.log(`${ROUTE_NAME} - Fetching invoices for craftsman: ${craftsmanId}${status ? `, filtered by status: ${status}` : ''}`);
 
     let query = supabase
       .from('invoices')
-      .select('*')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
       .eq('craftsman_id', craftsmanId)
       .order('created_at', { ascending: false });
 
@@ -67,36 +75,19 @@ export async function GET(req) {
       return handleApiError(`Error fetching invoices: ${error.message}`, 500, ROUTE_NAME);
     }
     
-    // If including customer data, fetch customer details for each invoice
-    if (includeCustomer && data && data.length > 0) {
-      const customerIds = data
-        .filter(invoice => invoice.customer_id)
-        .map(invoice => invoice.customer_id);
-        
-      if (customerIds.length > 0) {
-        const { data: customers, error: custError } = await supabase
-          .from('customers')
-          .select('*')
-          .in('id', customerIds);
-          
-        if (custError) {
-          console.error(`${ROUTE_NAME} - GET customer data error:`, custError);
-          return handleApiError(custError, 'Failed to retrieve customer data', 500, ROUTE_NAME);
+    // Flatten customer data into each invoice for easier access
+    if (data && data.length > 0) {
+      data.forEach(invoice => {
+        if (invoice.customers) {
+          invoice.customer_name = invoice.customers.name;
+          invoice.customer_email = invoice.customers.email;
+          invoice.customer_phone = invoice.customers.phone;
+          invoice.customer_address = invoice.customers.address;
+          // Keep the nested object for backward compatibility
+          invoice.customer = invoice.customers;
+          delete invoice.customers; // Remove the nested customers key
         }
-        
-        // Create customer lookup map
-        const customerMap = {};
-        customers?.forEach(customer => {
-          customerMap[customer.id] = customer;
-        });
-        
-        // Attach customer data to invoices
-        data.forEach(invoice => {
-          if (invoice.customer_id) {
-            invoice.customer = customerMap[invoice.customer_id] || null;
-          }
-        });
-      }
+      });
     }
     
     return handleApiSuccess(data || [], 'Invoices retrieved successfully');

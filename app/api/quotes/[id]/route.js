@@ -37,10 +37,19 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const includeMaterials = searchParams.get('materials') !== 'false';
 
-    // Get quote data
+    // Get quote data with customer information joined
     const { data: quote, error } = await supabase
       .from('quotes')
-      .select('*')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
       .eq('id', id)
       .eq('craftsman_id', craftsmanId)
       .single();
@@ -67,6 +76,17 @@ export async function GET(req) {
         404,
         ROUTE_NAME
       );
+    }
+    
+    // Flatten customer data into quote for easier access
+    if (quote.customers) {
+      quote.customer_name = quote.customers.name;
+      quote.customer_email = quote.customers.email;
+      quote.customer_phone = quote.customers.phone;
+      quote.customer_address = quote.customers.address;
+      // Keep the nested object for backward compatibility
+      quote.customer = quote.customers;
+      delete quote.customers; // Remove the nested customers key
     }
     
     // Log information about materials from JSONB field

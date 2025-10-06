@@ -432,7 +432,7 @@ export default function InvoicesPage() {
                       <div>
                         <div className="flex items-center">
                           <span className={`inline-block w-2 h-2 rounded-full mr-2 ${getStatusBadgeClass(invoice.status)}`}></span>
-                          <h3 className="text-white font-medium text-lg">{invoice.invoice_number || `Rechnung #${invoice.id}`}</h3>
+                          <h3 className="text-white font-medium text-lg">{invoice.invoice_number_formatted || invoice.invoice_number || `#${String(invoice.id).substring(0, 8)}`}</h3>
                         </div>
                         <p className="text-white/60 mt-1">{invoice.customer_name || 'Unbekannter Kunde'}</p>
                       </div>

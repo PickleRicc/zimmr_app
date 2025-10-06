@@ -43,10 +43,19 @@ export async function GET(req) {
     
     console.log(`${ROUTE_NAME} - Fetching invoice ID: ${id} for craftsman: ${craftsmanId}`);
     
-    // Get invoice data
+    // Get invoice data with customer information joined
     const { data: invoice, error } = await supabase
       .from('invoices')
-      .select('*')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
       .eq('id', id)
       .eq('craftsman_id', craftsmanId)
       .single();
@@ -58,6 +67,17 @@ export async function GET(req) {
     
     if (!invoice) {
       return handleApiError('Invoice not found', 404, ROUTE_NAME);
+    }
+    
+    // Flatten customer data into invoice for easier access
+    if (invoice.customers) {
+      invoice.customer_name = invoice.customers.name;
+      invoice.customer_email = invoice.customers.email;
+      invoice.customer_phone = invoice.customers.phone;
+      invoice.customer_address = invoice.customers.address;
+      // Keep the nested object for backward compatibility
+      invoice.customer = invoice.customers;
+      delete invoice.customers; // Remove the nested customers key
     }
     
     // Log information about materials from JSONB

@@ -470,8 +470,10 @@ export default function InvoiceDetailPage({ params }) {
   };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('de-DE');
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('de-DE');
   };
 
   const getStatusBadgeClass = (status) => {
@@ -859,24 +861,49 @@ export default function InvoiceDetailPage({ params }) {
                       
                       <div className="p-2">
                         <h3 className="text-sm font-medium text-white/60 mb-2">Rechnungsdatum</h3>
-                        <p className="text-white">{formatDate(invoice.issue_date || invoice.created_at)}</p>
+                        <p className="text-white">{formatDate(invoice.issue_date || invoice.created_at) || 'N/A'}</p>
                       </div>
                       
                       <div className="p-2">
                         <h3 className="text-sm font-medium text-white/60 mb-2">Fälligkeitsdatum</h3>
-                        <p className="text-white">{formatDate(invoice.due_date)}</p>
+                        <p className="text-white">{formatDate(invoice.due_date) || 'N/A'}</p>
                       </div>
                       
-                      <div className="p-2">
-                        <h3 className="text-sm font-medium text-white/60 mb-2">Leistungszeitraum</h3>
-                        <p className="text-white">
-                          {invoice.service_period_start && invoice.service_period_end ? (
-                            `${formatDate(invoice.service_period_start)} - ${formatDate(invoice.service_period_end)}`
-                          ) : (
-                            formatDate(invoice.service_date || invoice.service_period_start)
-                          )}
-                        </p>
-                      </div>
+                      {/* Performance period - only show if valid date exists */}
+                      {(() => {
+                        // Priority: 1. appointment dates, 2. invoice period, 3. service date
+                        let periodDisplay = null;
+                        
+                        if (appointment?.start_time && appointment?.end_time) {
+                          // Use appointment date range
+                          const startFormatted = formatDate(appointment.start_time);
+                          const endFormatted = formatDate(appointment.end_time);
+                          if (startFormatted && endFormatted) {
+                            periodDisplay = `${startFormatted} - ${endFormatted}`;
+                          }
+                        } else if (invoice.service_period_start && invoice.service_period_end) {
+                          // Use invoice service period
+                          const startFormatted = formatDate(invoice.service_period_start);
+                          const endFormatted = formatDate(invoice.service_period_end);
+                          if (startFormatted && endFormatted) {
+                            periodDisplay = `${startFormatted} - ${endFormatted}`;
+                          }
+                        } else if (invoice.service_date) {
+                          // Use single service date
+                          periodDisplay = formatDate(invoice.service_date);
+                        }
+                        
+                        // Only render the field if we have a valid date (not empty)
+                        if (periodDisplay) {
+                          return (
+                            <div className="p-2">
+                              <h3 className="text-sm font-medium text-white/60 mb-2">Leistungszeitraum</h3>
+                              <p className="text-white">{periodDisplay}</p>
+                            </div>
+                          );
+                        }
+                        return null; // Hide field if no valid date
+                      })()}
                       
                       <div className="p-2">
                         <h3 className="text-sm font-medium text-white/60 mb-2">Dienstleistung</h3>

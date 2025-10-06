@@ -40,10 +40,19 @@ export async function GET(req) {
       );
     }
     
-    // Start building the query
+    // Start building the query with customer join
     let query = supabase
       .from('quotes')
-      .select('*')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          email,
+          phone,
+          address
+        )
+      `)
       .eq('craftsman_id', craftsmanId)
       .order('created_at', { ascending: false });
       
@@ -60,36 +69,19 @@ export async function GET(req) {
       return handleApiError(error, 'Failed to retrieve quotes', 500, ROUTE_NAME);
     }
     
-    // If including customer data, fetch customer details for each quote
-    if (includeCustomer && data && data.length > 0) {
-      const customerIds = data
-        .filter(quote => quote.customer_id)
-        .map(quote => quote.customer_id);
-        
-      if (customerIds.length > 0) {
-        const { data: customers, error: custError } = await supabase
-          .from('customers')
-          .select('*')
-          .in('id', customerIds);
-          
-        if (custError) {
-          console.error(`${ROUTE_NAME} - GET customer data error:`, custError);
-          return handleApiError(custError, 'Failed to retrieve customer data', 500, ROUTE_NAME);
+    // Flatten customer data into each quote for easier access
+    if (data && data.length > 0) {
+      data.forEach(quote => {
+        if (quote.customers) {
+          quote.customer_name = quote.customers.name;
+          quote.customer_email = quote.customers.email;
+          quote.customer_phone = quote.customers.phone;
+          quote.customer_address = quote.customers.address;
+          // Keep the nested object for backward compatibility
+          quote.customer = quote.customers;
+          delete quote.customers; // Remove the nested customers key
         }
-        
-        // Create customer lookup map
-        const customerMap = {};
-        customers?.forEach(customer => {
-          customerMap[customer.id] = customer;
-        });
-        
-        // Attach customer data to quotes
-        data.forEach(quote => {
-          if (quote.customer_id) {
-            quote.customer = customerMap[quote.customer_id] || null;
-          }
-        });
-      }
+      });
     }
     
     // If including materials, fetch materials for quotes

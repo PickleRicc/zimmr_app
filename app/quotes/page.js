@@ -503,7 +503,7 @@ export default function QuotesPage() {
                         <div>
                           <h3 className="font-medium text-lg text-white">
                             {quote.customer_name || 'Kein Kundenname'}{' '}
-                            <span className="text-sm text-white/60">(Angebot #{quote.id || 'N/A'})</span>
+                            <span className="text-sm text-white/60">(Angebot {quote.quote_number_formatted || quote.quote_number || `#${String(quote.id).substring(0, 8)}`})</span>
                           </h3>
                         </div>
                         

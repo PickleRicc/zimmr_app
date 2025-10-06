@@ -33,19 +33,17 @@ const formatAppointmentDate = (dateString) => {
 
 // Format date for display
 const formatDate = (dateString) => {
-  if (!dateString) return 'Kein Datum';
+  if (!dateString) return '';
   
   try {
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString; // Return original if parsing fails
+    if (isNaN(date.getTime())) return ''; // Return empty if parsing fails
     
-    // Format: DD.MM.YYYY HH:MM (German format)
+    // Format: DD.MM.YYYY (German format)
     return date.toLocaleDateString('de-DE', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      year: 'numeric'
     });
   } catch (error) {
     console.error('Fehler beim Formatieren des Datums:', error);
@@ -560,7 +558,9 @@ export default function QuoteDetailPage({ params }) {
               {!editMode ? (
                 <div>
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-semibold text-[#ffcb00]">Angebot #{formData.id || 'N/A'}</h2>
+                    <h2 className="text-xl font-semibold text-[#ffcb00]">
+                      {formData.quote_number_formatted ? `Angebot Nr. ${formData.quote_number_formatted}` : `Angebot #${formData.id ? String(formData.id).substring(0, 8) : 'N/A'}`}
+                    </h2>
                     <span className="px-3 py-1 rounded-xl text-sm font-medium bg-blue-900/30 text-blue-400 border border-blue-800/50">
                       ANGEBOT
                     </span>
@@ -569,23 +569,47 @@ export default function QuoteDetailPage({ params }) {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                     <div className="p-2">
                       <h3 className="text-sm font-medium text-white/60 mb-2">Kunde</h3>
-                      <p className="text-white">{customers.find(c => c.id === formData.customer_id)?.name || 'N/A'}</p>
+                      <p className="text-white">{formData.customer_name || customers.find(c => c.id === formData.customer_id)?.name || 'N/A'}</p>
                     </div>
                     
                     <div className="p-2">
                       <h3 className="text-sm font-medium text-white/60 mb-2">Erstellungsdatum</h3>
-                      <p className="text-white">{formatDate(formData.created_at)}</p>
+                      <p className="text-white">{formatDate(formData.created_at) || 'N/A'}</p>
                     </div>
                     
                     <div className="p-2">
                       <h3 className="text-sm font-medium text-white/60 mb-2">Fälligkeitsdatum</h3>
-                      <p className="text-white">{formatDate(formData.due_date)}</p>
+                      <p className="text-white">{formatDate(formData.due_date) || 'N/A'}</p>
                     </div>
                     
-                    <div className="p-2">
-                      <h3 className="text-sm font-medium text-white/60 mb-2">Leistungsdatum</h3>
-                      <p className="text-white">{formatDate(formData.service_date)}</p>
-                    </div>
+                    {/* Performance period - only show if valid date exists */}
+                    {(() => {
+                      // Priority: 1. appointment dates, 2. service date
+                      let periodDisplay = null;
+                      
+                      if (selectedAppointment?.start_time && selectedAppointment?.end_time) {
+                        // Use appointment date range
+                        const startFormatted = formatDate(selectedAppointment.start_time);
+                        const endFormatted = formatDate(selectedAppointment.end_time);
+                        if (startFormatted && endFormatted) {
+                          periodDisplay = `${startFormatted} - ${endFormatted}`;
+                        }
+                      } else if (formData.service_date) {
+                        // Use single service date
+                        periodDisplay = formatDate(formData.service_date);
+                      }
+                      
+                      // Only render the field if we have a valid date
+                      if (periodDisplay) {
+                        return (
+                          <div className="p-2">
+                            <h3 className="text-sm font-medium text-white/60 mb-2">Leistungsdatum</h3>
+                            <p className="text-white">{periodDisplay}</p>
+                          </div>
+                        );
+                      }
+                      return null; // Hide field if no valid date
+                    })()}
                     
                     <div className="p-2">
                       <h3 className="text-sm font-medium text-white/60 mb-2">Standort</h3>

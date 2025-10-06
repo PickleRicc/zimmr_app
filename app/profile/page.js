@@ -5,13 +5,15 @@ import { useRouter } from "next/navigation";
 import { useAuthedFetch } from "../../lib/utils/useAuthedFetch";
 import Header from "../components/Header";
 import { useRequireAuth } from "../../lib/utils/useRequireAuth";
+import { useAuth } from "../../contexts/AuthContext";
 
 // Accent color used across the app
 const ACCENT = "#ffcb00";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useRequireAuth();
+  const { loading: authLoading } = useRequireAuth();
+  const { user, session } = useAuth(); // Get session from AuthContext
   const authedFetch = useAuthedFetch();
 
   /* ---------------- state ---------------- */
@@ -50,7 +52,13 @@ export default function ProfilePage() {
     bank_name: "",
     iban: "",
     bic: "",
+    // Logo
+    logo_url: "",
   });
+
+  const [logoFile, setLogoFile] = useState(null);
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   /* ------------- data fetch ------------- */
   useEffect(() => {
@@ -122,7 +130,13 @@ export default function ProfilePage() {
       bank_name: pdfData.bank_name || "",
       iban: pdfData.iban || "",
       bic: pdfData.bic || "",
+      logo_url: pdfData.logo_url || "",
     });
+    
+    // Set logo preview if exists
+    if (pdfData.logo_url) {
+      setLogoPreview(pdfData.logo_url);
+    }
   };
 
   /* ------------- handlers ------------- */
@@ -134,6 +148,98 @@ export default function ProfilePage() {
   const handlePdfSettingsChange = (e) => {
     const { name, value } = e.target;
     setPdfSettings((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleLogoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+      setError('Bitte nur PNG oder JPG Dateien hochladen');
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Logo darf maximal 5MB groß sein');
+      setTimeout(() => setError(''), 4000);
+      return;
+    }
+
+    setLogoFile(file);
+    setLogoPreview(URL.createObjectURL(file));
+  };
+
+  const handleLogoUpload = async () => {
+    if (!logoFile) return;
+
+    setUploadingLogo(true);
+    setError('');
+    setSuccess('');
+    
+    try {
+      console.log('Starting logo upload...', logoFile.name);
+      console.log('Session state:', { hasSession: !!session, hasUser: !!user });
+      
+      // Get auth token manually for file upload
+      const token = session?.access_token;
+      console.log('Token available:', !!token);
+      
+      if (!token) {
+        console.error('No access token found in session:', session);
+        throw new Error('Keine Authentifizierung gefunden. Bitte neu anmelden.');
+      }
+      
+      const formData = new FormData();
+      formData.append('logo', logoFile);
+
+      // Use regular fetch to avoid Content-Type override
+      const res = await fetch('/api/upload-logo', {
+        method: 'POST',
+        headers: {
+          // Only set Authorization - let browser handle Content-Type for FormData
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: formData,
+      });
+
+      console.log('Upload response status:', res.status);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: 'Unbekannter Fehler' }));
+        console.error('Upload failed:', errorData);
+        throw new Error(errorData.error || `Upload fehlgeschlagen (Status: ${res.status})`);
+      }
+
+      const data = await res.json();
+      
+      // Update pdf settings with new logo URL
+      setPdfSettings(prev => ({ ...prev, logo_url: data.logo_url }));
+      setLogoPreview(data.logo_url);
+      setSuccess('Logo erfolgreich hochgeladen und gespeichert!');
+      setTimeout(() => setSuccess(''), 4000);
+      setLogoFile(null);
+      
+      // Reload profile data to ensure sync with DB
+      try {
+        const profileRes = await authedFetch('/api/profile');
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          const profile = profileData.data || profileData;
+          populate(profile);
+        }
+      } catch (refreshErr) {
+        console.error('Error refreshing profile:', refreshErr);
+      }
+    } catch (err) {
+      console.error('Logo upload error:', err);
+      setError(err.message || 'Fehler beim Hochladen');
+      setTimeout(() => setError(''), 6000);
+    } finally {
+      setUploadingLogo(false);
+    }
   };
 
   const handleSave = async () => {
@@ -256,6 +362,47 @@ export default function ProfilePage() {
                   value={pdfSettings.company_email} 
                   onChange={handlePdfSettingsChange} 
                 />
+              </div>
+
+              <h3 className="text-lg font-semibold text-white mb-4">Firmenlogo</h3>
+              <div className="mb-8">
+                <p className="text-white/60 text-sm mb-4">
+                  Laden Sie Ihr Firmenlogo hoch (PNG oder JPG, max. 5MB). Das Logo erscheint auf Ihren PDFs.
+                </p>
+                
+                {logoPreview && (
+                  <div className="mb-4 p-4 bg-white/10 rounded-lg">
+                    <img 
+                      src={logoPreview} 
+                      alt="Logo Vorschau" 
+                      className="max-w-[200px] max-h-[200px] object-contain bg-white p-2 rounded"
+                    />
+                  </div>
+                )}
+                
+                <div className="flex gap-3 items-start flex-wrap">
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg"
+                      onChange={handleLogoSelect}
+                      className="hidden"
+                    />
+                    <span className="inline-block px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg text-white font-medium transition-colors">
+                      {logoPreview ? 'Anderes Logo wählen' : 'Logo auswählen'}
+                    </span>
+                  </label>
+                  
+                  {logoFile && (
+                    <button
+                      onClick={handleLogoUpload}
+                      disabled={uploadingLogo}
+                      className="px-4 py-2 bg-[#ffcb00] hover:bg-[#e6b800] text-black rounded-lg font-medium disabled:opacity-50 transition-colors"
+                    >
+                      {uploadingLogo ? 'Wird hochgeladen...' : 'Logo hochladen'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <h3 className="text-lg font-semibold text-white mb-4">Steuerinformationen</h3>
