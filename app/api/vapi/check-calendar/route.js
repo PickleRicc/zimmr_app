@@ -6,6 +6,21 @@
 
 import { createSupabaseClient, handleApiError, handleApiSuccess } from '@/app/lib/api-utils';
 
+// CORS headers for Vapi.ai
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, x-vapi-secret',
+};
+
+// Handle OPTIONS preflight request
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(request) {
   const supabase = createSupabaseClient('Calendar Check');
   
@@ -81,15 +96,29 @@ export async function POST(request) {
 
     console.log('Calendar Check - Found available slots:', availableSlots.length);
 
-    return handleApiSuccess({
+    const response = handleApiSuccess({
       date,
       availableSlots,
       bookedCount: appointments.length,
       totalSlots: businessHours.end - businessHours.start
     }, 'Availability retrieved', 200);
 
+    // Add CORS headers to response
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
+
   } catch (error) {
     console.error('Calendar Check - Error:', error);
-    return handleApiError(error, 'Failed to check availability', 500, 'Calendar Check');
+    const response = handleApiError(error, 'Failed to check availability', 500, 'Calendar Check');
+    
+    // Add CORS headers to error response
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
   }
 }

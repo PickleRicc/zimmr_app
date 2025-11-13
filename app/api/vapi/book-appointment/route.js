@@ -6,6 +6,21 @@
 
 import { createSupabaseClient, handleApiError, handleApiSuccess } from '@/app/lib/api-utils';
 
+// CORS headers for Vapi.ai
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, x-vapi-secret',
+};
+
+// Handle OPTIONS preflight request
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(request) {
   const supabase = createSupabaseClient('Book Appointment');
   
@@ -69,15 +84,29 @@ export async function POST(request) {
       await sendCraftsmanNotification(craftsmanId, appointment, customer, supabase);
     }
 
-    return handleApiSuccess({
+    const response = handleApiSuccess({
       appointmentId: appointment.id,
       customerId: customer.id,
       status: 'pending_approval'
     }, 'Appointment created successfully', 201);
 
+    // Add CORS headers to response
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
+
   } catch (error) {
     console.error('Book Appointment - Error:', error);
-    return handleApiError(error, 'Failed to book appointment', 500, 'Book Appointment');
+    const response = handleApiError(error, 'Failed to book appointment', 500, 'Book Appointment');
+    
+    // Add CORS headers to error response
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
   }
 }
 
