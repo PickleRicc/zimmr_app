@@ -27,8 +27,33 @@ export async function POST(request) {
   try {
     const body = await request.json();
     console.log('Calendar Check - Raw request body:', JSON.stringify(body, null, 2));
+    console.log('Calendar Check - Request headers:', {
+      'content-type': request.headers.get('content-type'),
+      'x-vapi-secret': request.headers.get('x-vapi-secret') ? 'present' : 'missing'
+    });
     
-    const { craftsmanId, date, timeRange } = body;
+    // Vapi might send parameters in different formats
+    // Format 1: Direct parameters
+    let craftsmanId = body.craftsmanId;
+    let date = body.date;
+    let timeRange = body.timeRange;
+    
+    // Format 2: Wrapped in 'message.toolCalls'
+    if (!craftsmanId && body.message?.toolCalls?.[0]?.function?.arguments) {
+      const args = body.message.toolCalls[0].function.arguments;
+      craftsmanId = args.craftsmanId;
+      date = args.date;
+      timeRange = args.timeRange;
+      console.log('Calendar Check - Extracted from toolCalls:', { craftsmanId, date });
+    }
+    
+    // Format 3: Wrapped in 'parameters'
+    if (!craftsmanId && body.parameters) {
+      craftsmanId = body.parameters.craftsmanId;
+      date = body.parameters.date;
+      timeRange = body.parameters.timeRange;
+      console.log('Calendar Check - Extracted from parameters:', { craftsmanId, date });
+    }
 
     // Verify Vapi.ai API key
     const apiKey = request.headers.get('x-vapi-secret');
