@@ -25,7 +25,10 @@ export async function POST(request) {
   const supabase = createSupabaseClient('Calendar Check');
   
   try {
-    const { craftsmanId, date, timeRange } = await request.json();
+    const body = await request.json();
+    console.log('Calendar Check - Raw request body:', JSON.stringify(body, null, 2));
+    
+    const { craftsmanId, date, timeRange } = body;
 
     // Verify Vapi.ai API key
     const apiKey = request.headers.get('x-vapi-secret');
@@ -35,6 +38,7 @@ export async function POST(request) {
 
     // Validate required parameters
     if (!craftsmanId || !date) {
+      console.error('Calendar Check - Missing parameters:', { craftsmanId, date, receivedBody: body });
       return handleApiError(
         new Error('Missing parameters'),
         'craftsmanId and date are required',
