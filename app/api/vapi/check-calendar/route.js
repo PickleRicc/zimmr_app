@@ -4,7 +4,8 @@
  * Returns available time slots based on existing appointments
  */
 
-import { createSupabaseClient, handleApiError, handleApiSuccess } from '@/app/lib/api-utils';
+import { NextResponse } from 'next/server';
+import { createSupabaseClient, handleApiError } from '@/app/lib/api-utils';
 
 // CORS headers for Vapi.ai
 const corsHeaders = {
@@ -125,12 +126,19 @@ export async function POST(request) {
 
     console.log('Calendar Check - Found available slots:', availableSlots.length);
 
-    const response = handleApiSuccess({
+    // Vapi expects the result directly or in a specific format
+    const result = {
       date,
       availableSlots,
       bookedCount: appointments.length,
-      totalSlots: businessHours.end - businessHours.start
-    }, 'Availability retrieved', 200);
+      totalSlots: businessHours.end - businessHours.start,
+      message: `Found ${availableSlots.length} available time slots`
+    };
+
+    console.log('Calendar Check - Returning result:', JSON.stringify(result, null, 2));
+
+    // Return response in Vapi's expected format
+    const response = NextResponse.json(result, { status: 200 });
 
     // Add CORS headers to response
     Object.entries(corsHeaders).forEach(([key, value]) => {

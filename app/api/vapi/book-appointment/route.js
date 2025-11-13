@@ -4,7 +4,8 @@
  * Finds or creates customer and sends notification to craftsman
  */
 
-import { createSupabaseClient, handleApiError, handleApiSuccess } from '@/app/lib/api-utils';
+import { NextResponse } from 'next/server';
+import { createSupabaseClient, handleApiError } from '@/app/lib/api-utils';
 
 // CORS headers for Vapi.ai
 const corsHeaders = {
@@ -84,11 +85,18 @@ export async function POST(request) {
       await sendCraftsmanNotification(craftsmanId, appointment, customer, supabase);
     }
 
-    const response = handleApiSuccess({
+    // Vapi expects the result directly or in a specific format
+    const result = {
       appointmentId: appointment.id,
       customerId: customer.id,
-      status: 'pending_approval'
-    }, 'Appointment created successfully', 201);
+      status: 'pending_approval',
+      message: 'Appointment created successfully'
+    };
+
+    console.log('Book Appointment - Returning result:', JSON.stringify(result, null, 2));
+
+    // Return response in Vapi's expected format
+    const response = NextResponse.json(result, { status: 200 });
 
     // Add CORS headers to response
     Object.entries(corsHeaders).forEach(([key, value]) => {
