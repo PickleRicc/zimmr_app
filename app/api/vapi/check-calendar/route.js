@@ -32,6 +32,9 @@ export async function POST(request) {
       'content-type': request.headers.get('content-type'),
       'x-vapi-secret': request.headers.get('x-vapi-secret') ? 'present' : 'missing'
     });
+
+    // Extract toolCallId for Vapi response format
+    let toolCallId = null;
     
     // Vapi might send parameters in different formats
     // Format 1: Direct parameters
@@ -40,12 +43,14 @@ export async function POST(request) {
     let timeRange = body.timeRange;
     
     // Format 2: Wrapped in 'message.toolCalls'
-    if (!craftsmanId && body.message?.toolCalls?.[0]?.function?.arguments) {
-      const args = body.message.toolCalls[0].function.arguments;
+    if (!craftsmanId && body.message?.toolCalls?.[0]) {
+      const toolCall = body.message.toolCalls[0];
+      toolCallId = toolCall.id;
+      const args = toolCall.function.arguments;
       craftsmanId = args.craftsmanId;
       date = args.date;
       timeRange = args.timeRange;
-      console.log('Calendar Check - Extracted from toolCalls:', { craftsmanId, date });
+      console.log('Calendar Check - Extracted from toolCalls:', { toolCallId, craftsmanId, date });
     }
     
     // Format 3: Wrapped in 'parameters'
@@ -126,23 +131,37 @@ export async function POST(request) {
 
     console.log('Calendar Check - Found available slots:', availableSlots.length);
 
-    // Vapi expects the result directly or in a specific format
-    const result = {
+    // Format slots for AI consumption
+    const slotsFormatted = availableSlots.map(slot => slot.displayTime).join(', ');
+    
+    // Create result string for Vapi
+    const resultString = JSON.stringify({
+      success: true,
       date,
-      availableSlots,
-      bookedCount: appointments.length,
-      totalSlots: businessHours.end - businessHours.start,
-      message: `Found ${availableSlots.length} available time slots`
+      availableCount: availableSlots.length,
+      slots: availableSlots,
+      message: `Available slots on ${date}: ${slotsFormatted}`
+    });
+
+    // Vapi expects this exact format with toolCallId
+    const vapiResponse = {
+      results: [
+        {
+          toolCallId: toolCallId,
+          result: resultString
+        }
+      ]
     };
 
-    console.log('Calendar Check - Returning result:', JSON.stringify(result, null, 2));
+    console.log('Calendar Check - Returning Vapi response:', JSON.stringify(vapiResponse, null, 2));
 
-    // Return response in Vapi's expected format
-    const response = NextResponse.json(result, { status: 200 });
-
-    // Add CORS headers to response
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-      response.headers.set(key, value);
+    // Return response with explicit headers
+    const response = NextResponse.json(vapiResponse, { 
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      }
     });
 
     return response;
