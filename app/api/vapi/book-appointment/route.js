@@ -26,14 +26,44 @@ export async function POST(request) {
   const supabase = createSupabaseClient('Book Appointment');
   
   try {
-    const { 
-      craftsmanId, 
-      customerPhone, 
-      customerName, 
-      preferredDate, 
-      callId,
-      notes 
-    } = await request.json();
+    const body = await request.json();
+    console.log('Book Appointment - Raw request body:', JSON.stringify(body, null, 2));
+    console.log('Book Appointment - Request headers:', {
+      'content-type': request.headers.get('content-type'),
+      'x-vapi-secret': request.headers.get('x-vapi-secret') ? 'present' : 'missing'
+    });
+
+    // Vapi might send parameters in different formats
+    // Format 1: Direct parameters
+    let craftsmanId = body.craftsmanId;
+    let customerPhone = body.customerPhone;
+    let customerName = body.customerName;
+    let preferredDate = body.preferredDate;
+    let callId = body.callId;
+    let notes = body.notes;
+    
+    // Format 2: Wrapped in 'message.toolCalls'
+    if (!craftsmanId && body.message?.toolCalls?.[0]?.function?.arguments) {
+      const args = body.message.toolCalls[0].function.arguments;
+      craftsmanId = args.craftsmanId;
+      customerPhone = args.customerPhone;
+      customerName = args.customerName;
+      preferredDate = args.preferredDate;
+      callId = args.callId;
+      notes = args.notes;
+      console.log('Book Appointment - Extracted from toolCalls:', { craftsmanId, customerPhone, customerName, preferredDate });
+    }
+    
+    // Format 3: Wrapped in 'parameters'
+    if (!craftsmanId && body.parameters) {
+      craftsmanId = body.parameters.craftsmanId;
+      customerPhone = body.parameters.customerPhone;
+      customerName = body.parameters.customerName;
+      preferredDate = body.parameters.preferredDate;
+      callId = body.parameters.callId;
+      notes = body.parameters.notes;
+      console.log('Book Appointment - Extracted from parameters:', { craftsmanId, customerPhone, customerName, preferredDate });
+    }
 
     // Verify Vapi.ai API key
     const apiKey = request.headers.get('x-vapi-secret');
@@ -43,6 +73,7 @@ export async function POST(request) {
 
     // Validate required fields
     if (!craftsmanId || !customerPhone || !preferredDate) {
+      console.error('Book Appointment - Missing fields:', { craftsmanId, customerPhone, preferredDate, receivedBody: body });
       return handleApiError(
         new Error('Missing fields'),
         'craftsmanId, customerPhone, and preferredDate are required',
@@ -51,7 +82,7 @@ export async function POST(request) {
       );
     }
 
-    console.log('Book Appointment - Processing:', { craftsmanId, customerPhone, customerName });
+    console.log('Book Appointment - Processing:', { craftsmanId, customerPhone, customerName, preferredDate, notes });
 
     // Find or create customer
     let customer = await findOrCreateCustomer(customerPhone, customerName, craftsmanId, supabase);
