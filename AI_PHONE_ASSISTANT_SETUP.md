@@ -1,237 +1,197 @@
-# AI Phone Assistant Setup Guide
+# ZIMMR Phone Assistant - MVP Build Structure (Existing Number)
 
-## Complete Flow Overview
-
-1. **Customer calls craftsman's personal number** (linked to Twilio for separation)
-2. **AI assistant conducts full conversation** to gather appointment booking info
-3. **AI collects**: customer details, service needed, preferred date/time, location, urgency
-4. **System automatically creates appointment** in backend/frontend for specific craftsman
-5. **Craftsman receives notification** and can approve/modify appointment
-6. **Upon approval, SMS sent to customer** with confirmed appointment details
-
-## Files Created
-
-### API Routes
-- `app/api/phone/webhook/route.js` - Twilio webhook handler with GDPR disclaimer
-- `app/api/phone/stream/route.js` - Real-time conversational AI processing
-- `app/api/phone/logs/route.js` - Call logs management (transcripts only)
-- `app/api/phone/create-appointment/route.js` - Creates appointments from AI calls
-- `app/api/phone/approve-appointment/route.js` - Craftsman approval & SMS confirmation
-
-### UI Components
-- `app/phone/page.js` - Enhanced AI Phone Assistant dashboard
-
-### Configuration
-- `env.template` - Complete environment variables template
-
-## Required Environment Variables
-
-Copy `env.template` to `.env` and configure:
-
-```bash
-# Twilio Configuration (EU Region)
-TWILIO_ACCOUNT_SID=your_twilio_account_sid
-TWILIO_AUTH_TOKEN=your_twilio_auth_token
-TWILIO_PHONE_NUMBER=your_twilio_phone_number
-
-# OpenAI Configuration (Data Usage OFF)
-OPENAI_API_KEY=your_openai_api_key
-OPENAI_ORG_ID=your_openai_org_id
-
-# ElevenLabs Configuration (EU Servers)
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
-ELEVENLABS_VOICE_ID=your_voice_id
-
-# AssemblyAI Configuration (EU Servers Only)
-ASSEMBLYAI_API_KEY=your_assemblyai_api_key
-
-# n8n Webhook Configuration
-N8N_WEBHOOK_URL=your_n8n_webhook_url
-N8N_API_KEY=your_n8n_api_key
-
-# AWS Configuration (Frankfurt Region Only)
-AWS_REGION=eu-central-1
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+## **The Core Flow**
+```
+Customer calls craftsman's EXISTING number (+49 176 XXXXX)
+    ↓
+Craftsman's phone rings (20 seconds) - handled by carrier
+    ↓
+No answer? → Carrier forwards to Twilio number
+    ↓
+Twilio receives call with ForwardedFrom parameter
+    ↓
+Forward to Vapi.ai → AI conversation
+    ↓
+Creates: Callback task + Appointment (if requested)
 ```
 
-## Database Schema Updates Needed
+---
 
-You'll need to add these tables to your Supabase database:
+## **3 Systems You Need**
 
-### 1. Phone Call Logs Table
-```sql
-CREATE TABLE phone_call_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  transcript TEXT,
-  intent TEXT,
-  caller_name TEXT,
-  callback_number TEXT,
-  gdpr_compliant BOOLEAN DEFAULT true,
-  audio_stored BOOLEAN DEFAULT false,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+### **1. Twilio (Call Receiver)**
+- Receives forwarded calls from carrier
+- Detects which user via `ForwardedFrom` parameter
+- Forwards all calls to Vapi.ai (no filtering in MVP)
+- Configuration: Webhook URL to your Next.js API
 
-### 2. Phone Appointment Logs Table
-```sql
-CREATE TABLE phone_appointment_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  appointment_id UUID REFERENCES appointments(id),
-  customer_id UUID REFERENCES customers(id),
-  craftsman_id UUID REFERENCES users(id),
-  phone_number TEXT,
-  status TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+### **2. Vapi.ai (AI Brain)**
+- Conducts German conversation with caller
+- Extracts: Name, Phone, Service type, Date preference
+- **Has 2 "tools":**
+  - `check_calendar(user_id, date, time_range)` → Returns available slots
+  - `book_appointment(user_id, name, phone, service, datetime)` → Creates appointment
+- Returns conversation summary to your backend
 
-### 3. Appointment Approval Logs Table
-```sql
-CREATE TABLE appointment_approval_logs (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  appointment_id UUID REFERENCES appointments(id),
-  craftsman_id UUID REFERENCES users(id),
-  action TEXT, -- 'approved' or 'rejected'
-  notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+### **3. Next.js Backend (Business Logic)**
+- Receives calls from Twilio, identifies user by ForwardedFrom
+- Receives Vapi results via webhook
+- Creates callback task in ZIMMR
+- Manages Google Calendar appointments
+- Stores call records in Supabase
 
-### 4. Update Appointments Table
-```sql
--- Add new columns to existing appointments table
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS phone_booking_data JSONB;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS scheduled_date DATE;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS scheduled_time TIME;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP WITH TIME ZONE;
-ALTER TABLE appointments ADD COLUMN IF NOT EXISTS craftsman_notes TEXT;
-```
+---
 
-### 5. Update Customers Table
-```sql
--- Add source tracking to customers table
-ALTER TABLE customers ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
-```
+## **Database (3 Tables)**
 
-## Twilio Configuration
+**users** → personal_phone_number (their existing #), twilio_number (forwarding destination), assistant_enabled  
+**calls** → user_id, caller_number, caller_name, call_reason, preferred_date, transcript  
+**appointments** → call_id, user_id, customer_name, proposed_datetime, status (pending/confirmed)
 
-### 1. Set up Twilio Phone Numbers
-- Purchase phone numbers in EU region
-- Configure each number for a specific craftsman
-- Set webhook URL: `https://your-domain.com/api/phone/webhook`
+---
 
-### 2. Webhook Configuration
-In Twilio Console, set:
-- **Webhook URL**: `https://your-domain.com/api/phone/webhook`
-- **HTTP Method**: POST
-- **Voice**: Configure for incoming calls
+## **Onboarding (5 Screens)**
 
-### 3. Multi-Craftsman Setup
-Pass craftsman ID in webhook parameters:
-```
-https://your-domain.com/api/phone/webhook?craftsman_id=uuid&phone_number=+49123456789
-```
+1. **Welcome** → "Keep your existing number, get AI backup"
+2. **Auto-provision** → System creates Twilio number in background
+3. **Setup forwarding** → "Enter this code: `*61*+49XXXXXXXXX**20#`" with [Copy Code] and [Open Dialer] buttons
+4. **Verify** → System detects ForwardedFrom to confirm it's working (or show troubleshooting)
+5. **Done** → Show status and link to dashboard
 
-## AI Configuration
+**Key complexity:** User must manually enter MMI code in their phone's dialer
 
-### 1. OpenAI Setup
-- Create API key with data usage disabled
-- Set organization ID for billing tracking
-- Model: GPT-3.5 Turbo (cost-effective for conversations)
+---
 
-### 2. ElevenLabs Setup
-- Create account with EU server access
-- Generate API key
-- Select German voice ID
-- Configure for real-time streaming
+## **Call Flow Detail**
 
-### 3. AssemblyAI Setup (EU Servers)
-- Create account with EU data processing
-- Generate API key
-- Configure for real-time transcription
+### **Customer calls craftsman's existing number:**
+1. Carrier rings craftsman's phone (20 seconds)
+2. If answered → Normal call, done
+3. If no answer → Carrier forwards to Twilio number
+4. Twilio receives webhook with:
+   - `From` = Customer's number
+   - `ForwardedFrom` = Craftsman's number ← **This identifies which user**
+5. Lookup user by ForwardedFrom → Forward to their Vapi assistant
+6. Vapi conversation → Extract info → Webhook to your backend
+7. Create callback task + appointment if discussed
 
-## GDPR Compliance Features
+---
 
-✅ **No Audio Storage**: Only transcripts are saved
-✅ **EU Servers Only**: All processing in Frankfurt region
-✅ **Spoken Disclaimer**: GDPR notice at call start
-✅ **Data Minimization**: Only necessary data collected
-✅ **Retention Limits**: 90-day default retention
-✅ **Audit Trail**: All actions logged
+## **API Endpoints (5 Total)**
 
-## Testing the System
+1. **POST /api/twilio/incoming**
+   - Receives forwarded call
+   - Identifies user by ForwardedFrom parameter
+   - Forwards ALL calls to Vapi.ai (no whitelist/blacklist in MVP)
 
-### 1. Local Development
-```bash
-npm install
-npm run dev
-```
+2. **POST /api/vapi/webhook**
+   - Receives AI conversation results
+   - Creates callback task
+   - Creates appointment if discussed
 
-### 2. Test Call Flow
-1. Call your Twilio number
-2. Listen for GDPR disclaimer
-3. Provide appointment information
-4. Check dashboard for created appointment
-5. Approve/reject as craftsman
-6. Verify SMS confirmation sent
+3. **POST /api/vapi/check-calendar**
+   - Called by Vapi during conversation
+   - Queries user's Google Calendar
+   - Returns available time slots
 
-### 3. Monitor Logs
-- Check `/phone` dashboard for call logs
-- Monitor Supabase for appointment creation
-- Verify SMS delivery in Twilio console
+4. **POST /api/vapi/book-appointment**
+   - Called by Vapi during conversation
+   - Creates pending appointment in database
+   - Creates tentative Google Calendar event
+   - Creates task for craftsman to confirm
 
-## Production Deployment
+5. **POST /api/assistant/provision**
+   - Auto-provisions Twilio number during onboarding
+   - Stores twilio_number and user's personal_phone_number
 
-### 1. Environment Setup
-- Deploy to EU region (Frankfurt recommended)
-- Configure all environment variables
-- Set up SSL certificates
+---
 
-### 2. Monitoring
-- Set up logging for all API endpoints
-- Monitor Twilio webhook delivery
-- Track AI response times
-- Monitor SMS delivery rates
+## **Vapi.ai Configuration**
 
-### 3. Scaling Considerations
-- WebSocket connection limits
-- Concurrent call handling
-- Database connection pooling
-- API rate limits (OpenAI, ElevenLabs)
+**Settings:**
+- Model: GPT-4
+- Voice: German male (ElevenLabs)
+- Language: German
+- First message: "Guten Tag! Der Handwerker kann gerade nicht ans Telefon. Wie kann ich Ihnen helfen?"
 
-## Troubleshooting
+**System Prompt:**
+"You're a friendly assistant for a German craftsman. Ask for: name, contact number, reason for call, and if they'd like to schedule an appointment. If they want an appointment, ask for their preferred date/time and use your tools to check availability and book."
 
-### Common Issues
-1. **Webhook not receiving calls**: Check Twilio configuration
-2. **AI not responding**: Verify OpenAI API key and credits
-3. **No SMS sent**: Check Twilio SMS configuration
-4. **Transcription failing**: Verify AssemblyAI setup
-5. **Database errors**: Check Supabase connection and schema
+**2 Functions:**
+- `check_calendar(user_id, date, time_range)` → Your API returns available slots
+- `book_appointment(user_id, name, phone, service, datetime)` → Your API creates pending appointment
 
-### Debug Mode
-Enable detailed logging by setting:
-```
-NODE_ENV=development
-```
+---
 
-## Next Steps
+## **Critical Technical Note**
 
-1. **Install dependencies**: `npm install`
-2. **Configure environment variables**
-3. **Update database schema**
-4. **Set up Twilio webhooks**
-5. **Configure AI services**
-6. **Test with sample calls**
-7. **Deploy to production**
+**ForwardedFrom Detection:**
+- Works with ~70% of German carriers reliably
+- Format varies: E.164 (+49176...), national (0176...), or missing entirely
+- **MVP approach:** If ForwardedFrom missing, match by Twilio number (each user has unique Twilio #)
+- **Fallback:** Answer ALL calls to a Twilio number, log warning if can't identify user
 
-## Support
+---
 
-For issues with this implementation, check:
-- Twilio webhook logs
-- Next.js API route logs
-- Supabase database logs
-- OpenAI API usage dashboard
-- ElevenLabs usage dashboard
+## **Cost Model (Subscription)**
+
+**Pricing:**
+- Starter: €29/month (up to 100 calls)
+- Pro: €79/month (up to 300 calls)
+
+**Your costs per user:**
+- Twilio number: €1.50/month
+- Vapi usage: ~€4-6/month (avg 50-80 minutes)
+- Total: ~€6-8/month
+
+**Margin:** €21-71/month per user
+
+---
+
+## **MVP Timeline**
+
+**Week 1:** Twilio setup, webhook handling, user identification by ForwardedFrom  
+**Week 2:** Vapi integration, basic conversation flow, create callback tasks  
+**Week 3:** Google Calendar integration, appointment booking functions  
+**Week 4:** Onboarding flow with call forwarding setup and verification
+
+**Total: 4 weeks to working MVP**
+
+---
+
+## **Key Differences vs "New Number" Approach**
+
+**Added complexity:**
+- ✅ User keeps their existing number (main benefit)
+- ❌ Manual call forwarding setup (MMI code)
+- ❌ Verification step (check if ForwardedFrom detected)
+- ❌ Carrier compatibility issues (some don't send ForwardedFrom reliably)
+
+**Trade-off:** Slightly more complex setup, but craftsman keeps the number customers already know
+
+---
+
+## **What You Still Eliminated from Original Spec**
+
+- ❌ Whitelist/blacklist (answer ALL forwarded calls in MVP)
+- ❌ Multiple ring duration options (hardcode 20 seconds in instructions)
+- ❌ Minute tracking/caps (use subscription model)
+- ❌ Block screens and overage billing
+- ❌ Self-test feature (verify once during onboarding, that's it)
+
+**Result:** 60% simpler than original spec, keeps core value
+
+---
+
+## **Success Criteria**
+
+✅ User sets up call forwarding in 2 minutes  
+✅ System detects forwarded calls via ForwardedFrom  
+✅ AI handles ALL unanswered calls (no filtering needed)  
+✅ Callback tasks appear in ZIMMR app  
+✅ AI can check calendar and book appointments  
+✅ Craftsman confirms appointments with 1 click  
+
+---
+
+**This is your build roadmap for the existing number approach. 4 weeks, working MVP.**

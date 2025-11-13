@@ -229,6 +229,37 @@ export function handleApiSuccess(data, message = 'Success', statusCode = 200) {
 }
 
 /**
+ * Gets a craftsman by their personal phone number (for call forwarding)
+ * @param {string} phoneNumber - Phone number to lookup
+ * @param {Object} supabase - Supabase client
+ * @param {string} routeName - Name of the API route for logging
+ * @returns {Object|null} Craftsman object or null if not found
+ */
+export async function getCraftsmanByPhone(phoneNumber, supabase, routeName = 'API') {
+  try {
+    console.log(`${routeName} - Looking up craftsman by phone:`, phoneNumber);
+    
+    const { data, error } = await supabase
+      .from('craftsmen')
+      .select('id, user_id, name, personal_phone_number, twilio_number, assistant_enabled, vapi_assistant_id')
+      .eq('personal_phone_number', phoneNumber)
+      .eq('assistant_enabled', true)
+      .single();
+    
+    if (error) {
+      console.log(`${routeName} - No craftsman found for phone ${phoneNumber}:`, error.message);
+      return null;
+    }
+    
+    console.log(`${routeName} - Found craftsman:`, data.id);
+    return data;
+  } catch (err) {
+    console.error(`${routeName} - Error looking up craftsman by phone:`, err);
+    return null;
+  }
+}
+
+/**
  * Helper function to convert camelCase to snake_case
  * @param {Object} obj - Object to convert
  * @returns {Object} Converted object with snake_case keys
