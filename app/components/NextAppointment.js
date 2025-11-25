@@ -4,9 +4,34 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function NextAppointment({ appointment }) {
-  // If no appointment is provided, return nothing
-  if (!appointment) return null;
-  
+  // If no appointment is provided, show empty state
+  if (!appointment) {
+    return (
+      <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-5 md:p-7 border border-white/10 shadow-lg mb-8 max-w-xl w-full mx-auto animate-fade-in">
+        <div className="flex items-center mb-4 gap-3">
+          <div className="p-2.5 bg-[#ffcb00]/20 rounded-full">
+            <svg className="w-5 h-5 text-[#ffcb00]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <h2 className="text-lg md:text-xl font-semibold text-white">Nächster Termin</h2>
+        </div>
+        <div className="bg-white/5 rounded-xl p-8 text-center border border-white/5">
+          <p className="text-white/60 text-lg mb-4">Keine anstehenden Termine</p>
+          <Link
+            href="/appointments/new"
+            className="inline-flex items-center text-[#ffcb00] hover:text-[#e6b800] font-medium transition-colors"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            Termin hinzufügen
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // Format date for display
   const formatDate = (dateString) => {
     try {
@@ -40,7 +65,7 @@ export default function NextAppointment({ appointment }) {
   // Get formatted date and time
   const formattedDate = formatDate(appointment.scheduled_at);
   const formattedTime = formatTime(appointment.scheduled_at);
-  
+
   return (
     <div className="bg-white/5 backdrop-blur-xl rounded-2xl p-5 md:p-7 border border-white/10 shadow-lg mb-8 max-w-xl w-full mx-auto animate-fade-in">
       <div className="flex items-center mb-4 gap-3">
@@ -91,13 +116,13 @@ export default function NextAppointment({ appointment }) {
         <div className={`px-3 py-1.5 rounded-full text-xs font-medium w-fit md:w-auto text-center
           ${appointment.approval_status === 'approved' ? 'bg-green-500/20 text-green-400' :
             appointment.approval_status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-            appointment.approval_status === 'rejected' ? 'bg-red-500/20 text-red-400' :
-            'bg-[#ffcb00]/20 text-[#ffcb00]'}
+              appointment.approval_status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                'bg-[#ffcb00]/20 text-[#ffcb00]'}
         `}>
           {appointment.approval_status === 'approved' ? 'Genehmigt' :
             appointment.approval_status === 'pending' ? 'Ausstehend' :
-            appointment.approval_status === 'rejected' ? 'Abgelehnt' :
-            'Offen'}
+              appointment.approval_status === 'rejected' ? 'Abgelehnt' :
+                'Offen'}
         </div>
         <Link
           href={`/appointments/${appointment.id}`}
